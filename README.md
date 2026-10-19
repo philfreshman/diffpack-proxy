@@ -1,7 +1,7 @@
 # diffpack-proxy
 
 A small Cloudflare Worker that lets [diffpack.io](https://diffpack.io) read PHP (Composer)
-packages in the browser.
+packages and search Go modules in the browser.
 
 ## Why it exists
 
@@ -9,8 +9,11 @@ diffpack computes diffs in the browser. For Composer packages it needs two thing
 not allowed to read from another site: Packagist's version metadata
 (`repo.packagist.org/p2/…`) and the package archives (mostly GitHub's `codeload`). Neither sends a
 CORS header, the browser rule that says which sites may read a response. The proxy fetches those
-files and passes them back with the header added. Every other registry diffpack supports is read
-directly, without the proxy.
+files and passes them back with the header added.
+
+Go modules are read directly from `proxy.golang.org`, but searching them by keyword needs
+pkg.go.dev's search API, which has no CORS header either. The proxy passes those search answers
+through the same way. Every other registry diffpack supports is read directly, without the proxy.
 
 ## What it stores
 
@@ -19,7 +22,7 @@ it never sees a diff. The only state it keeps is a count of today's requests, so
 itself before Cloudflare's free daily limit is reached.
 
 Once it runs on a custom domain, Cloudflare's cache in each data centre also keeps copies of the
-public files it passed on: Packagist metadata for 5 minutes, and archives of up to 5 MB, which
+public files it passed on: Packagist metadata for 5 minutes, Go search answers for an hour, and archives of up to 5 MB, which
 never change, until Cloudflare drops them. On `workers.dev`, where it runs today, it caches
 nothing. A cached answer still counts against the daily budget, so the cache saves trips to
 GitHub and Packagist and makes repeat downloads faster, but it does not stretch the budget. See

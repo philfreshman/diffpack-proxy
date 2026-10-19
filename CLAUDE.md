@@ -2,8 +2,8 @@
 
 This file guides Claude Code (claude.ai/code) when working in this repository.
 
-diffpack-proxy is a Cloudflare Worker in TypeScript that fetches Packagist metadata and Composer
-archives for the diffpack app and adds CORS headers. It streams bytes only. The only thing it
+diffpack-proxy is a Cloudflare Worker in TypeScript that fetches Packagist metadata, Composer
+archives and pkg.go.dev's Go module search for the diffpack app and adds CORS headers. It streams bytes only. The only thing it
 stores itself is today's request count; on a custom domain it also keeps answers of up to 5 MB in
 Cloudflare's per-data-centre cache (see "Edge cache" in docs/contract.md).
 Its HTTP interface is [docs/contract.md](docs/contract.md): the app (`VITE_DIFFPACK_PROXY_ORIGIN`)
@@ -40,7 +40,7 @@ the deployed address. Both share their setup steps through `.github/actions/setu
 - `src/lib/upstream.ts`: the only module that calls `fetch`. It applies the contract's upstream
   rules (User-Agent, no forwarded headers, redirects by hand, timeout, error mapping) for every
   route.
-- `src/lib/edge-cache.ts`: builds the answer of the p2 and archive routes from upstream, through
+- `src/lib/edge-cache.ts`: builds the answer of the p2, archive and Go search routes from upstream, through
   Cloudflare's cache on a custom domain and straight through on `workers.dev`.
 - `src/lib/errors.ts`: builds every error answer (the JSON body and the `Diffpack-Proxy-Error`
   header). Reuse it for new error codes.
