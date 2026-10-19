@@ -94,15 +94,18 @@ describe("GET /v1/composer/p2/{vendor}/{package}.json", () => {
 	it.each([
 		["vendor", `${"a".repeat(30)}!/monolog`],
 		["package", `monolog/${"a".repeat(30)}!`],
-	])("refuses a long almost-valid %s name without stalling", async (_, name) => {
-		const startedAt = performance.now();
+	])(
+		"refuses a long almost-valid %s name without stalling",
+		async (_, name) => {
+			const startedAt = performance.now();
 
-		const response = await proxyRequest(
-			stubUpstream(),
-			`/v1/composer/p2/${name}.json`,
-		);
+			const response = await proxyRequest(
+				stubUpstream(),
+				`/v1/composer/p2/${name}.json`,
+			);
 
-		expect(response.status).toBe(400);
-		expect(performance.now() - startedAt).toBeLessThan(100);
-	});
+			expect(response.status).toBe(400);
+			expect(performance.now() - startedAt).toBeLessThan(100);
+		},
+	);
 });
