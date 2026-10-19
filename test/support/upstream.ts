@@ -1,4 +1,5 @@
 import { createProxy } from "../../src/lib/proxy";
+import { freshDailyQuota } from "./quota";
 
 export const PROXY = "https://proxy.test";
 export const ALLOWED_ORIGIN = "https://diffpack.io";
@@ -48,7 +49,12 @@ export function proxyFor(
 	upstream: ReturnType<typeof stubUpstream>,
 	{ now = Date.now }: TestProxyOptions = {},
 ) {
-	const proxy = createProxy({ fetch: upstream.fetch, now });
+	const proxy = createProxy({
+		fetch: upstream.fetch,
+		dailyQuota: freshDailyQuota(),
+		clock: () => new Date(),
+		now,
+	});
 	return (
 		path: string,
 		{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},

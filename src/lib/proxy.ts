@@ -4,9 +4,12 @@ import { errorResponse } from "./errors";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
 import { p2PackageName, relayP2 } from "./p2";
+import type { QuotaCounter } from "./quota";
 import { createUpstream, type UpstreamFetch } from "./upstream";
+import { isoTimestamp } from "./utc-day";
 
 const HEALTH_PATH = "/v1/health";
+const STATUS_PATH = "/v1/status";
 const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
 const PREFLIGHT_HEADERS = {
 	"Access-Control-Allow-Methods": "GET, HEAD",
@@ -17,6 +20,8 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
 
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
+	dailyQuota: QuotaCounter;
+	clock: () => Date;
 	upstreamTimeoutMs?: number;
 	now?: Clock;
 }
@@ -28,15 +33,30 @@ interface Route {
 
 export function createProxy({
 	fetch,
+	dailyQuota,
+	clock,
 	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
 	now = Date.now,
 }: ProxyDependencies) {
 	const upstream = createUpstream(fetch, upstreamTimeoutMs);
 	const listing = createArchiveListing(upstream, now);
 
+	async function status(): Promise<Response> {
+		const { allowed, used, budget, resetsAt } = await dailyQuota.take(clock());
+		return Response.json({
+			open: allowed,
+			used,
+			budget,
+			resetsAt: isoTimestamp(resetsAt),
+		});
+	}
+
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
 			return { answersWithoutOrigin: true, answer: async () => health() };
+		}
+		if (pathname === STATUS_PATH) {
+			return { answersWithoutOrigin: true, answer: status };
 		}
 		const p2Name = p2PackageName(pathname);
 		if (p2Name !== undefined) {

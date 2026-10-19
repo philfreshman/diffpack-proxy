@@ -5,5 +5,12 @@
 	"compatibility_date": "2026-10-12",
 	"observability": {
 		"enabled": false
-	}
+	},
+	"vars": {
+		"DAILY_REQUEST_BUDGET": 90000
+	},
+	"durable_objects": {
+		"bindings": [{ "name": "DAILY_QUOTA", "class_name": "DailyQuota" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DailyQuota"] }]
 }

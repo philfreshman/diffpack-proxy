@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProxy } from "../src/lib/proxy";
 import { p2Listing } from "./support/packagist";
+import { freshDailyQuota } from "./support/quota";
 import {
 	ALLOWED_ORIGIN,
 	PROXY,
@@ -221,6 +222,8 @@ describe("a slow upstream server", () => {
 	function proxyWithTimeout(upstream: ReturnType<typeof stubUpstream>) {
 		return createProxy({
 			fetch: upstream.fetch,
+			dailyQuota: freshDailyQuota(),
+			clock: () => new Date(),
 			upstreamTimeoutMs: TIMEOUT_MS,
 		});
 	}
