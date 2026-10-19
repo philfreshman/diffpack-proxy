@@ -87,6 +87,12 @@ function recordingCache(cache: Cache) {
 	return { calls, cache: recording as Cache };
 }
 
+function headersApartFromCacheOutcome(response: Response): string[][] {
+	return [...response.headers].filter(
+		([name]) => name !== "diffpack-proxy-cache",
+	);
+}
+
 async function downloaded(response: Response): Promise<Uint8Array> {
 	return new Uint8Array(await response.arrayBuffer());
 }
@@ -123,6 +129,38 @@ describe("a p2 file on a custom domain", () => {
 		expect(second.headers.get("Content-Type")).toBe("application/json");
 		expect(second.headers.get("Cache-Control")).toBe("public, max-age=300");
 		expect(upstream.calls).toHaveLength(1);
+	});
+});
+
+describe("an answer from the edge cache", () => {
+	it("carries the same headers as a fresh one and none of upstream's", async () => {
+		const get = proxyFor(
+			servingMonologZip(
+				() =>
+					new Response(ZIP_BYTES, {
+						headers: {
+							"Set-Cookie": "tracker=1",
+							"Access-Control-Allow-Origin": "*",
+							"X-GitHub-Request-Id": "abc",
+						},
+					}),
+			),
+			{ edgeCache: await freshEdgeCache() },
+		);
+
+		const fresh = await get(ARCHIVE_PATH);
+		await downloaded(fresh);
+		await get.settled();
+		const cached = await get(ARCHIVE_PATH);
+
+		expect(cached.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+		expect(headersApartFromCacheOutcome(cached)).toEqual(
+			headersApartFromCacheOutcome(fresh),
+		);
+		expect(cached.headers.has("Set-Cookie")).toBe(false);
+		expect(cached.headers.get("Access-Control-Allow-Origin")).toBe(
+			"https://diffpack.io",
+		);
 	});
 });
 
