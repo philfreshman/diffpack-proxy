@@ -40,6 +40,22 @@ describe("an archive url that the package's Packagist metadata lists", () => {
 	});
 });
 
+describe("an archive url written with escaped slashes in the Packagist metadata", () => {
+	it("is served", async () => {
+		const upstream = servingMonolog(
+			`{"packages":{"monolog/monolog":[{"version":"3.12.1","dist":{"type":"zip","url":"https:\\/\\/api.github.com\\/repos\\/Seldaek\\/monolog\\/zipball\\/${LISTED_SHA}","shasum":""}}]},"minified":"composer/2.0"}`,
+		);
+
+		const response = await proxyRequest(
+			upstream,
+			archivePath(MONOLOG, LISTED_DIST),
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe("zip");
+	});
+});
+
 describe("an archive url that the package's Packagist metadata does not list", () => {
 	it("is refused with 403 archive_not_listed", async () => {
 		const upstream = servingMonolog();

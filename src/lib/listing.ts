@@ -20,7 +20,9 @@ export function createArchiveListing(upstream: Upstream) {
 }
 
 function listsArchive(p2Text: string, distUrl: string): boolean {
-	return p2Text.includes(JSON.stringify(distUrl));
+	const asJsonString = JSON.stringify(distUrl);
+	const withEscapedSlashes = asJsonString.replaceAll("/", "\\/");
+	return p2Text.includes(asJsonString) || p2Text.includes(withEscapedSlashes);
 }
 
 function archiveNotListed(): Response {

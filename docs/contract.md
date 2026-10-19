@@ -37,7 +37,7 @@ without user info or a port on `repo.packagist.org` or a host in the right-hand 
 
 The proxy serves only archives that Packagist lists for the named package. Before fetching the
 archive, it reads `https://repo.packagist.org/p2/{vendor}/{package}.json` and checks that the file
-contains `url` as a JSON string. If it does not, the answer is `403 archive_not_listed`. If that
+contains `url` as a JSON string, written with plain or escaped (`\/`) slashes. If it does not, the answer is `403 archive_not_listed`. If that
 read fails, the archive is not fetched: a `404` from Packagist answers `404 not_found`, and any
 other failure answers `502 upstream_failed`.
 
