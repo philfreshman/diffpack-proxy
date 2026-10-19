@@ -108,6 +108,27 @@ describe("an archive url listed under another package", () => {
 	});
 });
 
+describe("an archive url that the metadata holds only inside a longer string", () => {
+	it.each([
+		["after other text", `https://mirror.example/${LISTED_DIST}`],
+		["before other text", `${LISTED_DIST}/extra`],
+	])("%s is refused with 403 archive_not_listed", async (_, longerString) => {
+		const upstream = servingMonolog(
+			`{"packages":{"monolog/monolog":[{"version":"1.0.0","homepage":"${longerString}"}]},"minified":"composer/2.0"}`,
+		);
+
+		const response = await proxyRequest(
+			upstream,
+			archivePath(MONOLOG, LISTED_DIST),
+		);
+
+		expect(response.status).toBe(403);
+		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"archive_not_listed",
+		);
+	});
+});
+
 describe("a Packagist failure during the listing check", () => {
 	it("answers 404 not_found when Packagist does not know the package", async () => {
 		const upstream = stubUpstream({
