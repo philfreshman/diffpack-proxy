@@ -30,6 +30,9 @@ the same on pull requests to `main` and pushes to `main`, from a frozen lockfile
 - `src/index.ts`: the Worker entry point. It only wires real dependencies into factories.
 - `src/lib/`: pure modules that take their side effects as parameters, for example
   `createProxy(…)`, so tests can pass stubs.
+- `src/lib/upstream.ts`: the only module that calls `fetch`. It applies the contract's upstream
+  rules (User-Agent, no forwarded headers, redirects by hand, timeout, error mapping) for every
+  route.
 - `src/lib/errors.ts`: builds every error answer (the JSON body and the `Diffpack-Proxy-Error`
   header). Reuse it for new error codes.
 - `test/`: Vitest tests through `@cloudflare/vitest-plugin`. They call the Worker through the
