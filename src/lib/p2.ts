@@ -1,5 +1,4 @@
-import { errorResponse } from "./errors";
-import { isComposerPackageName } from "./package-name";
+import { invalidPackageName, isComposerPackageName } from "./package-name";
 import type { Upstream } from "./upstream";
 
 const P2_PATH = /^\/v1\/composer\/p2\/(.+)\.json$/;
@@ -22,12 +21,5 @@ export async function relayP2(
 	return upstream.relay(
 		`https://repo.packagist.org/p2/${name}.json`,
 		P2_HEADERS,
-	);
-}
-
-export function invalidPackageName(): Response {
-	return errorResponse(
-		"invalid_request",
-		"The package name is not a valid Composer name.",
 	);
 }

@@ -2,6 +2,7 @@ const ERROR_HEADER = "Diffpack-Proxy-Error";
 
 const STATUS_BY_CODE = {
 	invalid_request: 400,
+	unsupported_archive_host: 400,
 	origin_not_allowed: 403,
 	not_found: 404,
 	method_not_allowed: 405,

@@ -1,6 +1,7 @@
-import { p2PackageName, relayP2 } from "./composer";
+import { ARCHIVE_PATH, relayArchive } from "./archive";
 import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
 import { errorResponse } from "./errors";
+import { p2PackageName, relayP2 } from "./p2";
 import { createUpstream, type UpstreamFetch } from "./upstream";
 
 const HEALTH_PATH = "/v1/health";
@@ -22,7 +23,7 @@ interface Route {
 export function createProxy({ fetch }: ProxyDependencies) {
 	const upstream = createUpstream(fetch);
 
-	function routeFor({ pathname }: URL): Route {
+	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
 			return { answersWithoutOrigin: true, answer: async () => health() };
 		}
@@ -31,6 +32,12 @@ export function createProxy({ fetch }: ProxyDependencies) {
 			return {
 				answersWithoutOrigin: false,
 				answer: () => relayP2(upstream, p2Name),
+			};
+		}
+		if (pathname === ARCHIVE_PATH) {
+			return {
+				answersWithoutOrigin: false,
+				answer: () => relayArchive(upstream, searchParams),
 			};
 		}
 		return { answersWithoutOrigin: true, answer: async () => noSuchRoute() };
