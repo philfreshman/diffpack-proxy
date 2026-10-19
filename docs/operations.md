@@ -251,9 +251,13 @@ curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i 
 curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i diffpack-proxy-cache
 ```
 
-The first prints `miss` and the second `hit`. For `symfony/symfony`, take a current dist URL from
-`https://repo.packagist.org/p2/symfony/symfony.json`: its archive is larger than 5 MB, so it should
-answer `bypass` and arrive whole. Each request costs one count from the budget.
+The first prints `miss` and the second `hit`. Then do the same for `symfony/symfony`, the largest
+archive (about 16 MB), with a current dist URL from
+`https://repo.packagist.org/p2/symfony/symfony.json`. It must arrive whole both times and never
+answer `hit`. GitHub builds a fresh archive without a `Content-Length`, so the first answer may
+say `miss` and is then dropped once it passes 5 MB; once GitHub has it ready it declares its
+length and the answer says `bypass`. Each request costs one count from the budget.
+`bun run dev` uses a local cache that behaves the same way, so this can be tried locally first.
 
 ## Per-IP rate rule
 

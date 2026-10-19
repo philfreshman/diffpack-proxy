@@ -73,7 +73,8 @@ without contacting upstream.
 
 Successful p2 and archive answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
 the cache, `miss` when it came from upstream and may be kept, and `bypass` when it came from
-upstream and will not be kept (on `*.workers.dev`, or above 5 MB). The header is for people
+upstream and will not be kept (on `*.workers.dev`, or when it declares more than 5 MB). An answer
+of unknown length says `miss` and is still not kept if it passes 5 MB. The header is for people
 checking the proxy with `curl` or the browser's developer tools; it is not in
 `Access-Control-Expose-Headers`, and clients must not depend on it.
 
