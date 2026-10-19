@@ -1,0 +1,23 @@
+name: Set up Node and Bun
+description: Install Node and Bun, then the project's packages from the frozen lockfile.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7.1.0
+      with:
+        node-version: 24
+
+    - uses: oven-sh/setup-bun@v2.2.0
+      with:
+        bun-version: 1.4.1
+
+    - name: Cache bun install
+      uses: actions/cache@v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - shell: bash
+      run: bun install --frozen-lockfile

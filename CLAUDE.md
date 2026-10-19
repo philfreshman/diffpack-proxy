@@ -20,11 +20,14 @@ bun run typecheck           # tsc, strict
 bun run lint                # biome lint
 bun run format              # biome format, check only (biome format --write . to fix)
 bun run test                # Vitest inside workerd, offline
-bun run deploy              # wrangler deploy
+bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
+scripts/smoke.sh <origin>   # live checks against a running proxy, network needed
 ```
 
 The pre-commit hook runs typecheck, lint, format and test. CI (`.github/workflows/ci.yml`) runs
-the same on pull requests to `main` and pushes to `main`, from a frozen lockfile.
+the same plus shellcheck on pull requests to `main`, from a frozen lockfile. Every push to `main`
+runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke test against
+the deployed address. Both share their setup steps through `.github/actions/setup`.
 
 ## Layout
 
