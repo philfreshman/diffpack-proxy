@@ -42,13 +42,14 @@ export function cachingRelay(
 		if ("failure" in fetched) {
 			return fetched.failure;
 		}
-		if (declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)) {
-			return answer(fetched.answer.body, headers, "bypass");
+		const source = fetched.answer.body;
+		if (
+			source === null ||
+			declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)
+		) {
+			return answer(source, headers, "bypass");
 		}
-		const { body, copy } = keepingACopy(
-			fetched.answer.body,
-			LARGEST_CACHED_BYTES,
-		);
+		const { body, copy } = keepingACopy(source, LARGEST_CACHED_BYTES);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return answer(body, headers, "miss");
 	};
@@ -81,10 +82,10 @@ async function storeCopy(
 }
 
 function keepingACopy(
-	source: ReadableStream<Uint8Array> | null,
+	source: ReadableStream<Uint8Array>,
 	limit: number,
 ): CopiedStream {
-	const reader = (source ?? new ReadableStream()).getReader();
+	const reader = source.getReader();
 	const copy = new BoundedCopy(limit);
 	const body = new ReadableStream<Uint8Array>({
 		async pull(controller) {

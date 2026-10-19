@@ -200,6 +200,20 @@ describe("answers the edge cache does not keep", () => {
 	});
 });
 
+describe("an empty upstream answer on a custom domain", () => {
+	it("is passed through as an empty body", async () => {
+		const get = proxyFor(
+			servingMonologZip(() => new Response(null)),
+			{ edgeCache: await freshEdgeCache() },
+		);
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.status).toBe(200);
+		expect(await downloaded(response)).toEqual(new Uint8Array());
+	});
+});
+
 describe("the Diffpack-Proxy-Cache header", () => {
 	it("says miss when the answer came from upstream and hit when it came from the cache", async () => {
 		const get = proxyFor(servingMonologZip(), {
