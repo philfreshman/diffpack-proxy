@@ -6,9 +6,15 @@ import type { Upstream, UpstreamText } from "./upstream";
 export type ArchiveListing = ReturnType<typeof createArchiveListing>;
 
 const P2_TEXT_LIFETIME_MS = 5 * 60_000;
+const P2_TEXT_CAPACITY = 8 * 1024 * 1024;
 
 export function createArchiveListing(upstream: Upstream, now: Clock) {
-	const p2Texts = createMemo<string>({ lifetimeMs: P2_TEXT_LIFETIME_MS, now });
+	const p2Texts = createMemo<string>({
+		lifetimeMs: P2_TEXT_LIFETIME_MS,
+		capacity: P2_TEXT_CAPACITY,
+		sizeOf: (_packageName, text) => text.length,
+		now,
+	});
 
 	async function p2TextOf(packageName: string): Promise<UpstreamText> {
 		const remembered = p2Texts.get(packageName);

@@ -89,3 +89,53 @@ describe("a remembered p2 file", () => {
 		expect(p2FetchesIn(upstream)).toBe(2);
 	});
 });
+
+describe("the p2 files remembered at once", () => {
+	const PSR_LOG = "psr/log";
+	const PSR_LOG_SHA = "f16e1d5863e37f8d8c2a01719f5b34baa2b714d3";
+	const PSR_LOG_DIST = `https://api.github.com/repos/php-fig/log/zipball/${PSR_LOG_SHA}`;
+	const FIVE_MILLION = 5_000_000;
+	const NINE_MILLION = 9_000_000;
+
+	function servingLargeP2Files(monologLength: number) {
+		return stubUpstream({
+			[p2UpstreamUrl(MONOLOG)]: () =>
+				new Response(
+					p2Listing(MONOLOG, [NEW_DIST, OLD_DIST]).padEnd(monologLength, " "),
+				),
+			[p2UpstreamUrl(PSR_LOG)]: () =>
+				new Response(
+					p2Listing(PSR_LOG, [PSR_LOG_DIST]).padEnd(FIVE_MILLION, " "),
+				),
+			[`https://codeload.github.com/Seldaek/monolog/legacy.zip/${NEW_SHA}`]:
+				() => new Response("new zip"),
+			[`https://codeload.github.com/Seldaek/monolog/legacy.zip/${OLD_SHA}`]:
+				() => new Response("old zip"),
+			[`https://codeload.github.com/php-fig/log/legacy.zip/${PSR_LOG_SHA}`]:
+				() => new Response("psr zip"),
+		});
+	}
+
+	it("drop the oldest once they pass 8 MB of text", async () => {
+		const upstream = servingLargeP2Files(FIVE_MILLION);
+		const request = proxyFor(upstream);
+
+		await request(archivePath(MONOLOG, NEW_DIST));
+		await request(archivePath(PSR_LOG, PSR_LOG_DIST));
+		const afterDrop = await request(archivePath(MONOLOG, OLD_DIST));
+
+		expect(await afterDrop.text()).toBe("old zip");
+		expect(p2FetchesIn(upstream)).toBe(2);
+	});
+
+	it("never include a single file over 8 MB", async () => {
+		const upstream = servingLargeP2Files(NINE_MILLION);
+		const request = proxyFor(upstream);
+
+		await request(archivePath(MONOLOG, NEW_DIST));
+		const second = await request(archivePath(MONOLOG, OLD_DIST));
+
+		expect(await second.text()).toBe("old zip");
+		expect(p2FetchesIn(upstream)).toBe(2);
+	});
+});
