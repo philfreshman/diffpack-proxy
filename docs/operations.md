@@ -10,10 +10,12 @@
   Each counted request makes one round trip to it, a few ms nearby and up to a couple of hundred
   ms from another continent. The proxy runs it alongside the upstream fetch, so it only adds
   delay when it takes longer than the upstream server's first answer.
-- One counter call per counted request stays inside the Durable Object free plan: at most
-  90,000 of its 100,000 requests and 100,000 row writes a day, and under its 13,000 GB-s a day
-  even if it never sleeps (about 10,800 GB-s). Once a Worker isolate (one running copy of the
-  Worker in one location) has seen the day used up, it stops calling the counter until 00:00 UTC.
+- One counter call per counted request stays inside the Durable Object free plan: about 90,000
+  of its 100,000 requests and 100,000 row writes a day, and under its 13,000 GB-s a day even if
+  it never sleeps (about 10,800 GB-s). Once a Worker isolate (one running copy of the Worker in
+  one location) has seen the day used up, it stops calling the counter until 00:00 UTC. So past
+  the budget, the counter is only called by `/v1/status` and by isolates that have not yet seen
+  the day used up.
 - If the counter cannot be reached, for example because its own daily limit is gone, the proxy
   fails closed: it answers `503 quota_exhausted` until the next 00:00 UTC, when Cloudflare's
   free-plan limits all reset together.

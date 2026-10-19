@@ -72,11 +72,15 @@ with an answer the browser can read.
 - Once the budget is used up, every counted request answers `503 quota_exhausted` until the next
   00:00 UTC. So does every counted request while the counter itself cannot be reached: the proxy
   fails closed.
+- A counted request starts its upstream reads while the counter answers, the archive route's
+  Packagist listing check included. When the counter refuses it, nothing from upstream reaches
+  the client: the download is cancelled and the answer is `503 quota_exhausted`.
 - `/v1/status` counts like any request and always asks the counter, so it reports the live count.
   `open` says whether the next counted request will be answered: it is `false` once `used`
-  reaches `budget`, and the answer stays `200` so monitoring can read it. `used` is today's count including this request, and it keeps growing past `budget` while
-  requests arrive. `resetsAt` is the next 00:00 UTC. Only when the counter cannot be reached does
-  `/v1/status` answer `503 quota_exhausted`.
+  reaches `budget`, and the answer stays `200` so monitoring can read it. `used` is today's
+  count including this request, and it keeps growing past `budget` while requests arrive.
+  `resetsAt` is the next 00:00 UTC. Only when the counter cannot be reached does `/v1/status`
+  answer `503 quota_exhausted`.
 
 ## Errors
 
