@@ -91,8 +91,10 @@ describe("GET /v1/composer/p2/{vendor}/{package}.json", () => {
 		expect(upstream.calls).toEqual([]);
 	});
 
-	it("refuses a long almost-valid name without stalling", async () => {
-		const name = `${"a".repeat(30)}!/monolog`;
+	it.each([
+		["vendor", `${"a".repeat(30)}!/monolog`],
+		["package", `monolog/${"a".repeat(30)}!`],
+	])("refuses a long almost-valid %s name without stalling", async (_, name) => {
 		const startedAt = performance.now();
 
 		const response = await proxyRequest(

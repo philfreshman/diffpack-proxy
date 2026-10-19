@@ -85,10 +85,19 @@ describe("a refused origin", () => {
 });
 
 describe("a missing origin", () => {
-	it("is refused on the Composer routes", async () => {
+	it.each([
+		["p2", P2_PATH],
+		[
+			"archive",
+			`/v1/composer/archive?${new URLSearchParams({
+				package: "monolog/monolog",
+				url: "https://api.github.com/repos/Seldaek/monolog/zipball/d7059e4c691d05ea1222b5124bed0f961be46e15",
+			})}`,
+		],
+	])("is refused on the %s route", async (_, path) => {
 		const upstream = servingP2();
 
-		const response = await proxyRequest(upstream, P2_PATH, { origin: null });
+		const response = await proxyRequest(upstream, path, { origin: null });
 
 		await expectOriginRefused(response);
 		expect(upstream.calls).toEqual([]);

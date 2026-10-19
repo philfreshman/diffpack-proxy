@@ -47,6 +47,53 @@ describe("requests to upstream servers", () => {
 
 		expect(response.headers.has("Set-Cookie")).toBe(false);
 	});
+
+	it("pass back none of the upstream's headers", async () => {
+		const upstream = servingP2({
+			headers: {
+				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Credentials": "true",
+				"Content-Disposition": "attachment",
+				"X-GitHub-Request-Id": "abc",
+			},
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect([...response.headers.keys()].sort()).toEqual([
+			"access-control-allow-origin",
+			"access-control-expose-headers",
+			"cache-control",
+			"content-type",
+			"vary",
+		]);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+			ALLOWED_ORIGIN,
+		);
+	});
+});
+
+describe("bodies from upstream servers", () => {
+	it("are streamed to the browser before the upstream finishes sending", async () => {
+		const firstChunk = new TextEncoder().encode('{"packages":');
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: () =>
+				new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.enqueue(firstChunk);
+						},
+					}),
+				),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+		const reader = response.body?.getReader();
+		const firstRead = await reader?.read();
+		await reader?.cancel();
+
+		expect(firstRead?.value).toEqual(firstChunk);
+	});
 });
 
 function redirectTo(location: string, status = 302) {
