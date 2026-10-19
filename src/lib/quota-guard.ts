@@ -32,13 +32,25 @@ export function createQuotaGuard(dailyQuota: QuotaCounter) {
 		},
 
 		async status(now: Date): Promise<Response> {
-			const { allowed, used, budget, resetsAt } = await dailyQuota.take(now);
-			return Response.json({
-				open: allowed,
-				used,
-				budget,
-				resetsAt: isoTimestamp(resetsAt),
-			});
+			const ticket = await tryTakeTicket(now);
+			if (ticket === undefined) {
+				return quotaExhausted(nextUtcMidnight(now), now);
+			}
+			return statusReport(ticket);
 		},
 	};
+}
+
+function statusReport({
+	allowed,
+	used,
+	budget,
+	resetsAt,
+}: QuotaTicket): Response {
+	return Response.json({
+		open: allowed,
+		used,
+		budget,
+		resetsAt: isoTimestamp(resetsAt),
+	});
 }

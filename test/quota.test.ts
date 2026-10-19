@@ -229,6 +229,38 @@ describe("GET /v1/status", () => {
 			resetsAt: "2026-10-20T00:00:00Z",
 		});
 	});
+
+	it("answers 200 with open false and the live count once the day is used up", async () => {
+		const proxy = proxyAt(NOON);
+		await sendBeyondTheBudget(proxy, P2_PATH);
+
+		const response = await send(proxy, STATUS_PATH);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			open: false,
+			used: TEST_DAILY_BUDGET + 2,
+			budget: TEST_DAILY_BUDGET,
+			resetsAt: "2026-10-20T00:00:00Z",
+		});
+	});
+
+	it("answers 503 quota_exhausted when the counter cannot be reached", async () => {
+		const proxy = proxyAt("2026-10-19T23:00:00Z", {
+			dailyQuota: {
+				take: () => Promise.reject(new Error("Durable Object reset.")),
+			},
+		});
+
+		const response = await send(proxy, STATUS_PATH);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get("Retry-After")).toBe("3600");
+		expect(await response.json()).toMatchObject({
+			error: "quota_exhausted",
+			resetsAt: "2026-10-20T00:00:00Z",
+		});
+	});
 });
 
 describe("requests outside the quota", () => {
