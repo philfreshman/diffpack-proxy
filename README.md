@@ -50,8 +50,6 @@ below 100,000. To try a small budget locally, pass it to Wrangler:
 bun run dev --var DAILY_REQUEST_BUDGET:3
 ```
 
-[docs/operations.md](docs/operations.md) describes where the counter runs.
-
 ## Run it locally
 
 You need [Bun](https://bun.sh) and Node.js 22 or newer (Wrangler and the test runner use Node).
@@ -71,3 +69,10 @@ bun run test
 
 `bun run test` runs the tests inside `workerd`, Cloudflare's Workers runtime, without network
 access.
+
+## Deploy and operate it
+
+Every push to `main` deploys the Worker to Cloudflare and runs `scripts/smoke.sh` against it.
+[docs/operations.md](docs/operations.md) covers the first deploy, the smoke test, the free-plan
+limits, what people see when a limit is reached, usage, rollback, logging and where the daily
+counter runs.
