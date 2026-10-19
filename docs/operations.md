@@ -61,6 +61,7 @@ answer yet, wait a few minutes and re-run the workflow.
 - `GET /v1/status` answers `200` with `open: true`.
 - The p2 route for `monolog/monolog` answers `200` with `Access-Control-Allow-Origin` for
   `Origin: https://diffpack.io`.
+- The Go search route for `chi` answers `200` with a list of `items`.
 - `HEAD` on the archive route for monolog 3.12.1 answers `200` with `application/zip`.
 - A foreign `Origin` answers `403 origin_not_allowed`.
 - An archive Packagist does not list answers `403 archive_not_listed`.
@@ -73,8 +74,8 @@ scripts/smoke.sh https://diffpack-proxy.philipswiezak.workers.dev
 scripts/smoke.sh http://localhost:8787
 ```
 
-Each run sends 6 requests to the Worker. Cloudflare counts all 6 against its 100,000 a day, and
-5 of them count against `DAILY_REQUEST_BUDGET` (`/v1/health` does not). A deploy adds at least
+Each run sends 7 requests to the Worker. Cloudflare counts all 7 against its 100,000 a day, and
+6 of them count against `DAILY_REQUEST_BUDGET` (`/v1/health` does not). A deploy adds at least
 one more `/v1/health` request while it waits. The smoke test fails on a day the budget is used
 up, because `/v1/status` then reports `open: false`.
 
@@ -100,7 +101,7 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 - **The proxy's budget is used up.** Every counted request answers `503 quota_exhausted` with
   `resetsAt` and `Retry-After`, and `/v1/status` reports `open: false`. The app can read this
   answer and show its message, "diffpack's Composer proxy has used today's free allowance. It
-  resets at 00:00 UTC." Other registries keep working, since they do not use the proxy. This is the normal way a busy day ends.
+  resets at 00:00 UTC." Other registries keep working, since they do not use the proxy. Go keeps working for a full module path, which the app reads from `proxy.golang.org`; only searching Go modules by keyword stops. This is the normal way a busy day ends.
 - **The counter's own Durable Object limits are used up, or it cannot be reached.** The proxy
   fails closed with the same `503 quota_exhausted` answer.
 - **Cloudflare's 100,000 Worker requests are used up.** Cloudflare stops running the Worker and
@@ -215,7 +216,7 @@ For `bun run dev`, put `GITHUB_TOKEN=<token>` in `.dev.vars`, which git ignores.
 
 ## Edge cache
 
-The proxy keeps successful p2 and archive answers in Cloudflare's cache, as described under "Edge
+The proxy keeps successful p2, archive and Go search answers in Cloudflare's cache, as described under "Edge
 cache" in `docs/contract.md`. It only does so on a custom domain: on `workers.dev`, where it runs
 today, Cloudflare's cache does nothing, so the proxy does not use it and every answer says
 `Diffpack-Proxy-Cache: bypass`. The code is in place and turns itself on once decision D2 in the
@@ -237,8 +238,9 @@ What it buys, and what it does not:
   5 MB while streaming. That covers well over 90% of Composer archives; larger ones, such as
   `symfony/symfony`, stream through as before. A refused or abandoned request stores nothing.
 - **Entries.** They are keyed by the upstream URL (`https://codeload.github.com/…`,
-  `https://repo.packagist.org/p2/…`). Archive URLs contain a commit SHA, so their content never
-  changes; p2 files expire after 5 minutes. If an entry ever has to go, **Caching > Configuration
+  `https://repo.packagist.org/p2/…`, `https://pkg.go.dev/v1/search?…`). Archive URLs contain a
+  commit SHA, so their content never changes; p2 files expire after 5 minutes and Go search
+  answers after an hour. If an entry ever has to go, **Caching > Configuration
   > Purge Everything** on the zone removes all of them; a purge by URL does not work for them.
 
 To check it by hand once the custom domain exists (pending until D2), request the same archive
@@ -282,7 +284,8 @@ Create rule**, then set:
 Then select **Deploy**.
 
 - **Why these numbers.** One comparison in the app costs about three proxy requests: one p2 read
-  and two archives. A person stays far below 60 in 10 seconds, even switching versions quickly.
+  and two archives. A Go keyword search costs one request each time the typed text settles for
+  300 ms. A person stays far below 60 in 10 seconds, even switching versions quickly.
   The free plan only counts over 10 seconds and only blocks for 10 seconds.
 - **What it does not do.** It caps one address at 6 requests a second, so one client needs over
   4 hours instead of minutes to use up 90,000. That buys time to notice in the dashboard; it does

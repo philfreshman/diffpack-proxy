@@ -14,11 +14,18 @@ Only `GET`, `HEAD` and `OPTIONS` are accepted. `HEAD` answers with the same stat
 | :- | :- | :- |
 | `GET /v1/composer/p2/{vendor}/{package}.json` | `https://repo.packagist.org/p2/{vendor}/{package}.json` | `200`, body passed through unchanged, `Content-Type: application/json`, `Cache-Control: public, max-age=300` |
 | `GET /v1/composer/archive?package={vendor}/{package}&url={dist URL, URL-encoded}` | See the archive table | `200`, streamed, `Content-Type: application/zip`, `Cache-Control: public, max-age=31536000, immutable` |
+| `GET /v1/go/search?q={query}` | `https://pkg.go.dev/v1/search?q={query, URL-encoded}&limit=25` | `200`, body passed through unchanged, `Content-Type: application/json`, `Cache-Control: public, max-age=3600` |
 | `GET /v1/status` | none | `200 {"open": true, "used": 1234, "budget": 90000, "resetsAt": "2026-10-20T00:00:00Z"}`. See "Daily quota". |
 | `GET /v1/health` | none | `200 {"ok": true}`. Skips the quota counter, so keep monitoring infrequent: Cloudflare still counts it. |
 
 `{vendor}/{package}` must match Composer's name rule,
 `^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$`.
+
+`q` is the search text for Go modules, given exactly once and 1–100 characters long. The proxy
+always asks pkg.go.dev for 25 results and adds no other parameter. pkg.go.dev returns packages,
+not modules, so several results can share one `modulePath`; the client groups them. When nothing
+matches, pkg.go.dev answers `{"items": null, "total": 0}`, which is passed through as it is.
+Redirects are followed by hand, at most 3, and only to `https` URLs on `pkg.go.dev`.
 
 `url` is the dist URL exactly as Packagist lists it. It must match one row below, or the answer
 is `400 unsupported_archive_host`:
@@ -57,22 +64,22 @@ and no retry for any other status, host or route. Without the token, a `429` or 
 
 ## Edge cache
 
-On a custom domain, the proxy keeps successful p2 and archive answers in Cloudflare's cache of
+On a custom domain, the proxy keeps successful p2, archive and Go search answers in Cloudflare's cache of
 the data centre that served them, keyed by the upstream URL it fetched. A later request for the
 same upstream URL in the same data centre is answered from there with the same body and headers,
 without contacting upstream.
 
-- A p2 file is kept for 5 minutes and an archive for up to a year, as their `Cache-Control`
-  says. Cloudflare may drop either earlier.
+- A p2 file is kept for 5 minutes, a Go search answer for an hour and an archive for up to a
+  year, as their `Cache-Control` says. Cloudflare may drop any of them earlier.
 - An answer is kept only once the client has received all of it, and only if it is 5 MB or
   smaller. One that declares a larger `Content-Length`, or passes 5 MB while streaming, is
   streamed through without being kept. Errors, upstream answers with a status other than
   `200` (such as a partial `206`) and answers to `HEAD` are never kept.
 - An answer from the cache goes through every other rule first: the origin check, the archive
-  listing check and the daily quota. It counts against the budget like any other request.
+  listing check, the search text check and the daily quota. It counts against the budget like any other request.
 - On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
 
-Successful p2 and archive answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
+Successful p2, archive and Go search answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
 the cache, `miss` when it came from upstream and may be kept, and `bypass` when it came from
 upstream and will not be kept (on `*.workers.dev`, when upstream answered with a status other
 than `200`, or when it declares more than 5 MB). An answer
@@ -123,11 +130,11 @@ upstream one.
 
 | Status | `error` | When | Extra fields |
 | :- | :- | :- | :- |
-| 400 | `invalid_request` | package name bad, missing or given more than once; `url` missing, given more than once or not a URL | |
+| 400 | `invalid_request` | package name bad, missing or given more than once; `url` missing, given more than once or not a URL; `q` missing, empty, longer than 100 characters or given more than once | |
 | 400 | `unsupported_archive_host` | `url` matches no row of the archive table | `host` |
 | 403 | `origin_not_allowed` | see above | |
 | 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata | |
-| 404 | `not_found` | Packagist or the archive host answered 404, or the path matches no route | |
+| 404 | `not_found` | Packagist, the archive host or pkg.go.dev answered 404, or the path matches no route | |
 | 405 | `method_not_allowed` | not GET, HEAD or OPTIONS, on any path; the answer carries `Allow: GET, HEAD, OPTIONS` | |
 | 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds (the GitHub API retry gets its own 25 seconds), could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
 | 503 | `quota_exhausted` | today's budget is used up, or the quota counter cannot be reached (see "Daily quota") | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |

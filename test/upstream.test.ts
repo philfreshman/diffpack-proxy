@@ -189,6 +189,7 @@ describe("redirects from upstream servers", () => {
 		["plain http", "http://repo.packagist.org/p2/monolog/monolog.json"],
 		["user info", "https://x@repo.packagist.org/p2/monolog/monolog.json"],
 		["a port", "https://repo.packagist.org:8443/p2/monolog/monolog.json"],
+		["the Go search host", "https://pkg.go.dev/v1/search?q=monolog&limit=25"],
 	])("to %s are refused", async (_, location) => {
 		const upstream = stubUpstream({
 			[P2_UPSTREAM]: redirectTo(location),
