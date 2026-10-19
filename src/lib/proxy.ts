@@ -1,0 +1,7 @@
+export function createProxy() {
+	return {
+		fetch(): Response {
+			return Response.json({ ok: true });
+		},
+	} satisfies ExportedHandler;
+}
