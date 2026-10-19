@@ -20,5 +20,15 @@
 			"groupName": "cloudflare",
 			"matchPackageNames": ["wrangler", "@cloudflare/**"]
 		}
+	],
+	"customManagers": [
+		{
+			"customType": "jsonata",
+			"datasourceTemplate": "npm",
+			"depNameTemplate": "@biomejs/biome",
+			"fileFormat": "json",
+			"managerFilePatterns": ["**/biome.{json,jsonc}"],
+			"matchStrings": ["{\"currentValue\": $split($.\"$schema\",(\"/\"))[-2]}"]
+		}
 	]
 }
