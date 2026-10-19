@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProxy } from "../src/lib/proxy";
 import type { QuotaCounter } from "../src/lib/quota";
+import { p2Listing } from "./support/packagist";
 import { freshDailyQuota, TEST_DAILY_BUDGET } from "./support/quota";
 import { ALLOWED_ORIGIN, PROXY, stubUpstream } from "./support/upstream";
 
@@ -8,6 +9,13 @@ const STATUS_PATH = "/v1/status";
 const P2_PATH = "/v1/composer/p2/monolog/monolog.json";
 const P2_UPSTREAM = "https://repo.packagist.org/p2/monolog/monolog.json";
 const NOON = "2026-10-19T12:00:00Z";
+const ARCHIVE_SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
+const ARCHIVE_DIST = `https://api.github.com/repos/Seldaek/monolog/zipball/${ARCHIVE_SHA}`;
+const ARCHIVE_UPSTREAM = `https://codeload.github.com/Seldaek/monolog/legacy.zip/${ARCHIVE_SHA}`;
+const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
+	package: "monolog/monolog",
+	url: ARCHIVE_DIST,
+})}`;
 
 interface QuotaProxyOptions {
 	upstream?: ReturnType<typeof stubUpstream>;
@@ -95,13 +103,7 @@ describe("the daily quota", () => {
 	});
 
 	it.each([
-		[
-			"an archive",
-			`/v1/composer/archive?${new URLSearchParams({
-				package: "monolog/monolog",
-				url: "https://api.github.com/repos/Seldaek/monolog/zipball/d7059e4c691d05ea1222b5124bed0f961be46e15",
-			})}`,
-		],
+		["an archive", ARCHIVE_PATH],
 		["an unknown path", "/v1/nope"],
 	])("refuses %s once the day is used up", async (_, path) => {
 		const proxy = proxyAt(NOON);
@@ -180,6 +182,36 @@ describe("the daily quota", () => {
 
 		expect(response.status).toBe(503);
 		expect(upstream.calls).toHaveLength(1);
+		expect(downloadCancelled).toBe(true);
+	});
+});
+
+describe("a listed archive the counter refuses", () => {
+	it("answers quota_exhausted and cancels the archive download", async () => {
+		let downloadCancelled = false;
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: () =>
+				new Response(p2Listing("monolog/monolog", [ARCHIVE_DIST])),
+			[ARCHIVE_UPSTREAM]: () =>
+				new Response(
+					new ReadableStream({
+						cancel() {
+							downloadCancelled = true;
+						},
+					}),
+				),
+		});
+		const dailyQuota = freshDailyQuota();
+		await sendBeyondTheBudget(proxyAt(NOON, { dailyQuota }), STATUS_PATH);
+
+		const response = await send(
+			proxyAt(NOON, { upstream, dailyQuota }),
+			ARCHIVE_PATH,
+		);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get("Content-Type")).toBe("application/json");
+		expect(await response.json()).toMatchObject({ error: "quota_exhausted" });
 		expect(downloadCancelled).toBe(true);
 	});
 });
