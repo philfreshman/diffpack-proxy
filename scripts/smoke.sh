@@ -119,6 +119,18 @@ check_p2_allows_diffpack() {
 	fi
 }
 
+check_go_search_answers() {
+	local name="GET Go search for chi answers 200 with items" status
+	status="$(request GET "/v1/go/search?q=chi" "$ALLOWED_ORIGIN")"
+	if [[ $status != 200 ]]; then
+		fail "$name" "$(unexpected_status "$status")"
+	elif ! body_matches '"items"[[:space:]]*:[[:space:]]*\['; then
+		fail "$name" "body did not list items"
+	else
+		pass "$name"
+	fi
+}
+
 check_listed_archive_is_served() {
 	local name="HEAD archive for $PACKAGE 3.12.1 answers 200 with application/zip" status content_type
 	status="$(request HEAD "$(archive_path "$LISTED_ARCHIVE")" "$ALLOWED_ORIGIN")"
@@ -162,6 +174,7 @@ printf 'Smoke test against %s\n' "$PROXY_ORIGIN"
 check_health
 check_status_is_open
 check_p2_allows_diffpack
+check_go_search_answers
 check_listed_archive_is_served
 check_foreign_origin_is_refused
 check_unlisted_archive_is_refused
