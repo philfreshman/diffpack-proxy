@@ -132,6 +132,26 @@ describe("a p2 file on a custom domain", () => {
 	});
 });
 
+describe("a Go search answer on a custom domain", () => {
+	it("is served from the edge cache with the same headers on the second request", async () => {
+		const upstream = stubUpstream({
+			"https://pkg.go.dev/v1/search?q=chi&limit=25": () =>
+				new Response('{"items":null,"total":0}'),
+		});
+		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+		const first = await get("/v1/go/search?q=chi");
+		const firstBody = await first.text();
+		await get.settled();
+		const second = await get("/v1/go/search?q=chi");
+
+		expect(await second.text()).toBe(firstBody);
+		expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+		expect(second.headers.get("Cache-Control")).toBe("public, max-age=3600");
+		expect(upstream.calls).toHaveLength(1);
+	});
+});
+
 describe("an answer from the edge cache", () => {
 	it("carries the same headers as a fresh one and none of upstream's", async () => {
 		const get = proxyFor(

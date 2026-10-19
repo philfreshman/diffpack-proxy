@@ -7,6 +7,7 @@ import {
 	type Relay,
 } from "./edge-cache";
 import { errorResponse } from "./errors";
+import { GO_SEARCH_PATH, relayGoSearch } from "./go-search";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
 import { p2PackageName, relayP2 } from "./p2";
@@ -100,6 +101,13 @@ export function createProxy({
 				answersWithoutOrigin: false,
 				quota: "counted",
 				answer: () => relayArchive(relay, listing, searchParams),
+			};
+		}
+		if (pathname === GO_SEARCH_PATH) {
+			return {
+				answersWithoutOrigin: false,
+				quota: "counted",
+				answer: () => relayGoSearch(relay, searchParams),
 			};
 		}
 		return {

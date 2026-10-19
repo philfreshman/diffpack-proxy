@@ -20,6 +20,7 @@ const UPSTREAM_HOSTS = new Set([
 	"codeload.github.com",
 	"bitbucket.org",
 	"gitlab.com",
+	"pkg.go.dev",
 ]);
 const USER_AGENT = "diffpack-proxy (+https://diffpack.io)";
 const GITHUB_THROTTLE_STATUSES = new Set([403, 429]);
