@@ -1,3 +1,6 @@
+import { errorResponse } from "./errors";
+import { isoTimestamp } from "./utc-day";
+
 export interface QuotaTicket {
 	allowed: boolean;
 	used: number;
@@ -7,4 +10,12 @@ export interface QuotaTicket {
 
 export interface QuotaCounter {
 	take(now: Date): Promise<QuotaTicket>;
+}
+
+export function quotaExhausted(resetsAt: Date): Response {
+	return errorResponse(
+		"quota_exhausted",
+		"diffpack's Composer proxy has used today's free allowance. It resets at 00:00 UTC.",
+		{ resetsAt: isoTimestamp(resetsAt) },
+	);
 }

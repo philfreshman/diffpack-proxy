@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { freshDailyQuota } from "./support/quota";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
 const P2_PATH = "/v1/composer/p2/monolog/monolog.json";
@@ -6,6 +7,12 @@ const P2_UPSTREAM = "https://repo.packagist.org/p2/monolog/monolog.json";
 const P2_BYTES = new TextEncoder().encode(
 	'{"packages":{"monolog/monolog":[{"version":"3.12.1","description":"Sends your logs to files, sockets, inboxes \\u00e9"}]},  "minified":"composer/2.0"}\n',
 );
+
+async function awakeDailyQuota() {
+	const dailyQuota = freshDailyQuota();
+	await dailyQuota.take(new Date());
+	return dailyQuota;
+}
 
 describe("GET /v1/composer/p2/{vendor}/{package}.json", () => {
 	it("passes the Packagist file through byte for byte", async () => {
@@ -97,11 +104,13 @@ describe("GET /v1/composer/p2/{vendor}/{package}.json", () => {
 	])(
 		"refuses a long almost-valid %s name without stalling",
 		async (_, name) => {
+			const dailyQuota = await awakeDailyQuota();
 			const startedAt = performance.now();
 
 			const response = await proxyRequest(
 				stubUpstream(),
 				`/v1/composer/p2/${name}.json`,
+				{ dailyQuota },
 			);
 
 			expect(response.status).toBe(400);

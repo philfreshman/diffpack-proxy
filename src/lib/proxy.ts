@@ -4,12 +4,13 @@ import { errorResponse } from "./errors";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
 import { p2PackageName, relayP2 } from "./p2";
-import type { QuotaCounter } from "./quota";
+import { type QuotaCounter, quotaExhausted } from "./quota";
 import { createUpstream, type UpstreamFetch } from "./upstream";
 import { isoTimestamp } from "./utc-day";
 
 const HEALTH_PATH = "/v1/health";
 const STATUS_PATH = "/v1/status";
+const PATHS_OUTSIDE_QUOTA_GUARD = new Set([HEALTH_PATH, STATUS_PATH]);
 const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
 const PREFLIGHT_HEADERS = {
 	"Access-Control-Allow-Methods": "GET, HEAD",
@@ -76,12 +77,13 @@ export function createProxy({
 
 	async function answer(
 		request: Request,
+		url: URL,
 		origin: string | null,
 	): Promise<Response> {
 		if (!ALLOWED_METHODS.includes(request.method)) {
 			return methodNotAllowed();
 		}
-		const route = routeFor(new URL(request.url));
+		const route = routeFor(url);
 		if (!originPermits(origin, route)) {
 			return originNotAllowed();
 		}
@@ -91,12 +93,31 @@ export function createProxy({
 		return route.answer();
 	}
 
+	async function answerWithinQuota(
+		request: Request,
+		origin: string | null,
+	): Promise<Response> {
+		const url = new URL(request.url);
+		if (bypassesQuotaGuard(url)) {
+			return answer(request, url, origin);
+		}
+		const [ticket, response] = await Promise.all([
+			dailyQuota.take(clock()),
+			answer(request, url, origin),
+		]);
+		if (ticket.allowed) {
+			return response;
+		}
+		await response.body?.cancel();
+		return quotaExhausted(ticket.resetsAt);
+	}
+
 	return {
 		async fetch(request: Request): Promise<Response> {
 			const origin = request.headers.get("Origin");
 			const response = withCorsHeadersFor(
 				origin,
-				await answer(request, origin),
+				await answerWithinQuota(request, origin),
 			);
 			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
@@ -106,6 +127,10 @@ export function createProxy({
 async function withoutBody(response: Response): Promise<Response> {
 	await response.body?.cancel();
 	return new Response(null, response);
+}
+
+function bypassesQuotaGuard({ pathname }: URL): boolean {
+	return PATHS_OUTSIDE_QUOTA_GUARD.has(pathname);
 }
 
 function originPermits(origin: string | null, route: Route): boolean {

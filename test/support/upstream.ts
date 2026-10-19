@@ -1,4 +1,5 @@
 import { createProxy } from "../../src/lib/proxy";
+import type { QuotaCounter } from "../../src/lib/quota";
 import { freshDailyQuota } from "./quota";
 
 export const PROXY = "https://proxy.test";
@@ -43,15 +44,16 @@ interface ProxyRequestInit extends RequestInit {
 
 interface TestProxyOptions {
 	now?: () => number;
+	dailyQuota?: QuotaCounter | undefined;
 }
 
 export function proxyFor(
 	upstream: ReturnType<typeof stubUpstream>,
-	{ now = Date.now }: TestProxyOptions = {},
+	{ now = Date.now, dailyQuota = freshDailyQuota() }: TestProxyOptions = {},
 ) {
 	const proxy = createProxy({
 		fetch: upstream.fetch,
-		dailyQuota: freshDailyQuota(),
+		dailyQuota,
 		clock: () => new Date(),
 		now,
 	});
@@ -67,10 +69,14 @@ export function proxyFor(
 	};
 }
 
+interface SingleRequestInit extends ProxyRequestInit {
+	dailyQuota?: QuotaCounter;
+}
+
 export function proxyRequest(
 	upstream: ReturnType<typeof stubUpstream>,
 	path: string,
-	init: ProxyRequestInit = {},
+	{ dailyQuota, ...init }: SingleRequestInit = {},
 ): Promise<Response> {
-	return proxyFor(upstream)(path, init);
+	return proxyFor(upstream, { dailyQuota })(path, init);
 }

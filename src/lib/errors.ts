@@ -8,6 +8,7 @@ const STATUS_BY_CODE = {
 	not_found: 404,
 	method_not_allowed: 405,
 	upstream_failed: 502,
+	quota_exhausted: 503,
 } as const satisfies Record<string, number>;
 
 export type ProxyErrorCode = keyof typeof STATUS_BY_CODE;
