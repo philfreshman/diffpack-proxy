@@ -101,6 +101,23 @@ describe("GET /v1/go/search", () => {
 		expect(upstream.calls.map((call) => call.url)).toEqual([SEARCH_UPSTREAM]);
 	});
 
+	it("answers 502 upstream_failed when pkg.go.dev redirects to a Composer host", async () => {
+		const composerHost = "https://repo.packagist.org/p2/go-chi/chi.json";
+		const upstream = stubUpstream({
+			[SEARCH_UPSTREAM]: () =>
+				new Response(null, {
+					status: 302,
+					headers: { Location: composerHost },
+				}),
+			[composerHost]: () => new Response("{}"),
+		});
+
+		const response = await proxyRequest(upstream, "/v1/go/search?q=chi");
+
+		expect(response.status).toBe(502);
+		expect(upstream.calls.map((call) => call.url)).toEqual([SEARCH_UPSTREAM]);
+	});
+
 	it.each([
 		[404, "not_found"],
 		[429, "upstream_failed"],

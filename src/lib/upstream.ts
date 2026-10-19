@@ -15,13 +15,13 @@ type Credentials = Record<string, string>;
 const NOT_FOUND = 404;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 3;
-const UPSTREAM_HOSTS = new Set([
+const COMPOSER_HOSTS: ReadonlySet<string> = new Set([
 	"repo.packagist.org",
 	"codeload.github.com",
 	"bitbucket.org",
 	"gitlab.com",
-	"pkg.go.dev",
 ]);
+const GO_SEARCH_HOSTS: ReadonlySet<string> = new Set(["pkg.go.dev"]);
 const USER_AGENT = "diffpack-proxy (+https://diffpack.io)";
 const GITHUB_THROTTLE_STATUSES = new Set([403, 429]);
 
@@ -154,16 +154,24 @@ function allowedRedirectTarget(
 		return undefined;
 	}
 	const target = new URL(location, from);
-	return isUpstreamUrl(target) ? target.href : undefined;
+	return isUpstreamUrl(target, redirectHostsFrom(from))
+		? target.href
+		: undefined;
 }
 
-function isUpstreamUrl(url: URL): boolean {
+function redirectHostsFrom(url: string): ReadonlySet<string> {
+	return GO_SEARCH_HOSTS.has(new URL(url).hostname)
+		? GO_SEARCH_HOSTS
+		: COMPOSER_HOSTS;
+}
+
+function isUpstreamUrl(url: URL, allowedHosts: ReadonlySet<string>): boolean {
 	return (
 		url.protocol === "https:" &&
 		url.username === "" &&
 		url.password === "" &&
 		url.port === "" &&
-		UPSTREAM_HOSTS.has(url.hostname)
+		allowedHosts.has(url.hostname)
 	);
 }
 
