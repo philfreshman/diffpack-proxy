@@ -93,9 +93,17 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 			if ("failure" in fetched) {
 				return fetched;
 			}
-			return { text: await fetched.answer.text() };
+			return readText(fetched.answer);
 		},
 	};
+}
+
+async function readText(answer: Response): Promise<UpstreamText> {
+	try {
+		return { text: await answer.text() };
+	} catch {
+		return { failure: upstreamFailed() };
+	}
 }
 
 function allowedRedirectTarget(

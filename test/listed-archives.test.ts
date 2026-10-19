@@ -156,4 +156,30 @@ describe("a Packagist failure during the listing check", () => {
 			p2UpstreamUrl(MONOLOG),
 		]);
 	});
+
+	it("answers 502 upstream_failed when the Packagist body breaks off", async () => {
+		const upstream = stubUpstream({
+			[p2UpstreamUrl(MONOLOG)]: () =>
+				new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.enqueue(new TextEncoder().encode('{"packages":'));
+							controller.error(new TypeError("Network connection lost."));
+						},
+					}),
+				),
+			[LISTED_CODELOAD]: () => new Response("zip"),
+		});
+
+		const response = await proxyRequest(
+			upstream,
+			archivePath(MONOLOG, LISTED_DIST),
+		);
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+		});
+	});
 });
