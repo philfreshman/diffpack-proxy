@@ -81,8 +81,9 @@ without contacting upstream.
   compressed bytes, so the check does not apply and every decoded byte is kept.
 - An answer from the cache goes through every other rule first: the origin check, the archive
   listing check, the search text check and the daily quota. It counts against the budget like any other request.
-- A failing cache never fails the request. If the lookup throws, the answer comes from upstream
-  exactly as on a miss and says `miss`. If storing a copy fails, the client has already received
+- A failing cache never fails the request. If the lookup throws or rejects, the answer comes from upstream
+  exactly as on a miss and says `miss`, after the same checks and with the same single count
+  against the budget. If storing a copy fails, the client has already received
   the whole answer and nothing is kept.
 - On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
 

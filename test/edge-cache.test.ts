@@ -442,52 +442,106 @@ describe("the edge cache on workers.dev", () => {
 
 const CACHE_FAILURE = new Error("Cache API unavailable");
 
+type CacheFailure = "throws" | "rejects";
+
+function failing<T>(failure: CacheFailure): Promise<T> {
+	if (failure === "throws") {
+		throw CACHE_FAILURE;
+	}
+	return Promise.reject(CACHE_FAILURE);
+}
+
 function cacheFailingOn(
 	cache: Cache,
-	{ match = false, put = false }: { match?: boolean; put?: boolean },
+	{ match, put }: { match?: CacheFailure; put?: CacheFailure },
 ): Cache {
-	const failing: Pick<Cache, "match" | "put" | "delete"> = {
+	const failingCache: Pick<Cache, "match" | "put" | "delete"> = {
 		match(...args) {
-			if (match) {
-				throw CACHE_FAILURE;
-			}
-			return cache.match(...args);
+			return match === undefined ? cache.match(...args) : failing(match);
 		},
 		put(...args) {
-			return put ? Promise.reject(CACHE_FAILURE) : cache.put(...args);
+			return put === undefined ? cache.put(...args) : failing(put);
 		},
 		delete(...args) {
 			return cache.delete(...args);
 		},
 	};
-	return failing as Cache;
+	return failingCache as Cache;
 }
 
+const CACHE_FAILURES: CacheFailure[] = ["throws", "rejects"];
+
 describe("a failing edge cache on a custom domain", () => {
-	it("serves the archive from upstream as on a miss when the lookup throws", async () => {
-		const upstream = servingMonologZip();
-		const get = proxyFor(upstream, {
-			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: true }),
+	it.each(CACHE_FAILURES)(
+		"serves the archive from upstream as on a miss when the lookup %s",
+		async (failure) => {
+			const upstream = servingMonologZip();
+			const get = proxyFor(upstream, {
+				edgeCache: cacheFailingOn(await freshEdgeCache(), { match: failure }),
+			});
+
+			const response = await get(ARCHIVE_PATH);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+			expect(await downloaded(response)).toEqual(ZIP_BYTES);
+			expect(codeloadCalls(upstream)).toHaveLength(1);
+		},
+	);
+
+	it.each(CACHE_FAILURES)(
+		"streams the whole archive and settles quietly when the write %s",
+		async (failure) => {
+			const get = proxyFor(servingMonologZip(), {
+				edgeCache: cacheFailingOn(await freshEdgeCache(), { put: failure }),
+			});
+
+			const response = await get(ARCHIVE_PATH);
+
+			expect(response.status).toBe(200);
+			expect(await downloaded(response)).toEqual(ZIP_BYTES);
+			await expect(get.settled()).resolves.toBeDefined();
+		},
+	);
+
+	it("counts each request once against the daily budget when the lookup fails", async () => {
+		const get = proxyFor(servingMonologZip(), {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: "throws" }),
 		});
 
-		const response = await get(ARCHIVE_PATH);
+		const statuses: number[] = [];
+		for (let request = 0; request <= TEST_DAILY_BUDGET; request++) {
+			const response = await get(ARCHIVE_PATH);
+			await response.body?.cancel();
+			statuses.push(response.status);
+		}
 
-		expect(response.status).toBe(200);
-		expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
-		expect(await downloaded(response)).toEqual(ZIP_BYTES);
-		expect(codeloadCalls(upstream)).toHaveLength(1);
+		expect(statuses).toEqual([
+			...Array<number>(TEST_DAILY_BUDGET).fill(200),
+			503,
+		]);
 	});
 
-	it("streams the whole archive and settles quietly when the write rejects", async () => {
-		const get = proxyFor(servingMonologZip(), {
-			edgeCache: cacheFailingOn(await freshEdgeCache(), { put: true }),
+	it("still checks the package's Packagist listing when the lookup fails", async () => {
+		const otherPackage = stubUpstream({
+			[p2UpstreamUrl("acme/other")]: () =>
+				new Response(p2Listing("acme/other", [])),
+		});
+		const get = proxyFor(otherPackage, {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: "throws" }),
 		});
 
-		const response = await get(ARCHIVE_PATH);
+		const response = await get(
+			`/v1/composer/archive?${new URLSearchParams({
+				package: "acme/other",
+				url: GITHUB_DIST,
+			})}`,
+		);
 
-		expect(response.status).toBe(200);
-		expect(await downloaded(response)).toEqual(ZIP_BYTES);
-		await expect(get.settled()).resolves.toBeDefined();
+		expect(response.status).toBe(403);
+		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"archive_not_listed",
+		);
 	});
 });
 
