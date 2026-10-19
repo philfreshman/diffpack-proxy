@@ -439,3 +439,206 @@ describe("the edge cache on workers.dev", () => {
 		expect(get.backgroundTasks).toEqual([]);
 	});
 });
+
+const CACHE_FAILURE = new Error("Cache API unavailable");
+
+type CacheFailure = "throws" | "rejects";
+
+function failing<T>(failure: CacheFailure): Promise<T> {
+	if (failure === "throws") {
+		throw CACHE_FAILURE;
+	}
+	return Promise.reject(CACHE_FAILURE);
+}
+
+function cacheFailingOn(
+	cache: Cache,
+	{ match, put }: { match?: CacheFailure; put?: CacheFailure },
+): Cache {
+	const failingCache: Pick<Cache, "match" | "put" | "delete"> = {
+		match(...args) {
+			return match === undefined ? cache.match(...args) : failing(match);
+		},
+		put(...args) {
+			return put === undefined ? cache.put(...args) : failing(put);
+		},
+		delete(...args) {
+			return cache.delete(...args);
+		},
+	};
+	return failingCache as Cache;
+}
+
+const CACHE_FAILURES: CacheFailure[] = ["throws", "rejects"];
+
+describe("a failing edge cache on a custom domain", () => {
+	it.each(CACHE_FAILURES)(
+		"serves the archive from upstream as on a miss when the lookup %s",
+		async (failure) => {
+			const upstream = servingMonologZip();
+			const get = proxyFor(upstream, {
+				edgeCache: cacheFailingOn(await freshEdgeCache(), { match: failure }),
+			});
+
+			const response = await get(ARCHIVE_PATH);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+			expect(await downloaded(response)).toEqual(ZIP_BYTES);
+			expect(codeloadCalls(upstream)).toHaveLength(1);
+		},
+	);
+
+	it.each(CACHE_FAILURES)(
+		"streams the whole archive and settles quietly when the write %s",
+		async (failure) => {
+			const get = proxyFor(servingMonologZip(), {
+				edgeCache: cacheFailingOn(await freshEdgeCache(), { put: failure }),
+			});
+
+			const response = await get(ARCHIVE_PATH);
+
+			expect(response.status).toBe(200);
+			expect(await downloaded(response)).toEqual(ZIP_BYTES);
+			await expect(get.settled()).resolves.toBeDefined();
+		},
+	);
+
+	it("counts each request once against the daily budget when the lookup fails", async () => {
+		const get = proxyFor(servingMonologZip(), {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: "throws" }),
+		});
+
+		const statuses: number[] = [];
+		for (let request = 0; request <= TEST_DAILY_BUDGET; request++) {
+			const response = await get(ARCHIVE_PATH);
+			await response.body?.cancel();
+			statuses.push(response.status);
+		}
+
+		expect(statuses).toEqual([
+			...Array<number>(TEST_DAILY_BUDGET).fill(200),
+			503,
+		]);
+	});
+
+	it("still checks the package's Packagist listing when the lookup fails", async () => {
+		const otherPackage = stubUpstream({
+			[p2UpstreamUrl("acme/other")]: () =>
+				new Response(p2Listing("acme/other", [])),
+		});
+		const get = proxyFor(otherPackage, {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: "throws" }),
+		});
+
+		const response = await get(
+			`/v1/composer/archive?${new URLSearchParams({
+				package: "acme/other",
+				url: GITHUB_DIST,
+			})}`,
+		);
+
+		expect(response.status).toBe(403);
+		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"archive_not_listed",
+		);
+	});
+});
+
+function declaringLength(
+	body: () => BodyInit,
+	contentLength: number,
+	contentEncoding?: string,
+) {
+	return servingMonologZip(
+		() =>
+			new Response(body(), {
+				headers: {
+					"Content-Length": String(contentLength),
+					...(contentEncoding === undefined
+						? {}
+						: { "Content-Encoding": contentEncoding }),
+				},
+			}),
+	);
+}
+
+function inChunks(...chunks: Uint8Array[]): () => ReadableStream<Uint8Array> {
+	return () =>
+		new ReadableStream({
+			start(controller) {
+				for (const chunk of chunks) {
+					controller.enqueue(chunk);
+				}
+				controller.close();
+			},
+		});
+}
+
+const TWO_ZIP_CHUNKS = new Uint8Array([...ZIP_BYTES, ...ZIP_BYTES]);
+
+describe("an archive's declared length on a custom domain", () => {
+	it("caches every byte when it matches the bytes sent in several chunks", async () => {
+		const upstream = declaringLength(
+			inChunks(ZIP_BYTES, ZIP_BYTES),
+			TWO_ZIP_CHUNKS.byteLength,
+		);
+		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+		await downloaded(await get(ARCHIVE_PATH));
+		await get.settled();
+		const second = await get(ARCHIVE_PATH);
+
+		expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+		expect(await downloaded(second)).toEqual(TWO_ZIP_CHUNKS);
+		expect(codeloadCalls(upstream)).toHaveLength(1);
+	});
+
+	it.each([
+		["shorter than the bytes sent", 3],
+		["longer than the bytes sent", ZIP_BYTES.byteLength * 4],
+	])(
+		"still caches every decoded byte when it is %s of an encoded answer",
+		async (_, contentLength) => {
+			const upstream = declaringLength(
+				inChunks(ZIP_BYTES, ZIP_BYTES),
+				contentLength,
+				"gzip",
+			);
+			const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+			await downloaded(await get(ARCHIVE_PATH));
+			await get.settled();
+			const second = await get(ARCHIVE_PATH);
+
+			expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+			expect(await downloaded(second)).toEqual(TWO_ZIP_CHUNKS);
+			expect(codeloadCalls(upstream)).toHaveLength(1);
+		},
+	);
+
+	it.each([
+		["shorter than the bytes sent, so they overrun it", 3],
+		[
+			"longer than the bytes sent, so the archive is truncated",
+			ZIP_BYTES.byteLength * 4,
+		],
+	])(
+		"streams every byte but caches nothing when it is %s",
+		async (_, contentLength) => {
+			const upstream = declaringLength(
+				inChunks(ZIP_BYTES, ZIP_BYTES),
+				contentLength,
+			);
+			const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+			const first = await downloaded(await get(ARCHIVE_PATH));
+			await get.settled();
+			const second = await get(ARCHIVE_PATH);
+
+			expect(first).toEqual(TWO_ZIP_CHUNKS);
+			expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+			expect(codeloadCalls(upstream)).toHaveLength(2);
+		},
+	);
+});

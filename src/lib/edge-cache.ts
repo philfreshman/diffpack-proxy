@@ -12,6 +12,14 @@ const CACHE_OUTCOME_HEADER = "Diffpack-Proxy-Cache";
 
 type CacheOutcome = "hit" | "miss" | "bypass";
 
+interface DeclaredLength {
+	bytes: number;
+	exact: boolean;
+}
+
+const UNDECLARED_LENGTH: DeclaredLength = { bytes: 0, exact: false };
+const IDENTITY_ENCODING = "identity";
+
 export type BackgroundWork = Pick<ExecutionContext, "waitUntil">;
 
 interface CopiedStream {
@@ -35,7 +43,7 @@ export function cachingRelay(
 	background: BackgroundWork,
 ): Relay {
 	return async (url, headers, githubApiUrl) => {
-		const hit = await cache.match(url);
+		const hit = await ignoringCacheFailure(() => cache.match(url));
 		if (hit !== undefined) {
 			return answer(hit.body, headers, "hit");
 		}
@@ -47,7 +55,10 @@ export function cachingRelay(
 		if (source === null || !isCacheable(fetched.answer)) {
 			return answer(source, headers, "bypass");
 		}
-		const { body, copy } = keepingACopy(source, LARGEST_CACHED_BYTES);
+		const { body, copy } = keepingACopy(
+			source,
+			new BoundedCopy(LARGEST_CACHED_BYTES, declaredLengthOf(fetched.answer)),
+		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return answer(body, headers, "miss");
 	};
@@ -71,7 +82,22 @@ function isCacheable(answer: Response): boolean {
 }
 
 function declaresMoreThan(answer: Response, limit: number): boolean {
-	return Number(answer.headers.get("Content-Length")) > limit;
+	return declaredLengthOf(answer).bytes > limit;
+}
+
+function declaredLengthOf(answer: Response): DeclaredLength {
+	const bytes = Number(answer.headers.get("Content-Length"));
+	if (!Number.isSafeInteger(bytes) || bytes <= 0) {
+		return UNDECLARED_LENGTH;
+	}
+	return { bytes, exact: !isEncoded(answer) };
+}
+
+function isEncoded(answer: Response): boolean {
+	const encoding = answer.headers.get("Content-Encoding")?.trim().toLowerCase();
+	return (
+		encoding !== undefined && encoding !== "" && encoding !== IDENTITY_ENCODING
+	);
 }
 
 async function storeCopy(
@@ -82,16 +108,27 @@ async function storeCopy(
 ): Promise<void> {
 	const bytes = await copy;
 	if (bytes !== undefined) {
-		await cache.put(url, new Response(bytes, { headers }));
+		await ignoringCacheFailure(() =>
+			cache.put(url, new Response(bytes, { headers })),
+		);
+	}
+}
+
+async function ignoringCacheFailure<T>(
+	cacheCall: () => Promise<T>,
+): Promise<T | undefined> {
+	try {
+		return await cacheCall();
+	} catch {
+		return undefined;
 	}
 }
 
 function keepingACopy(
 	source: ReadableStream<Uint8Array>,
-	limit: number,
+	copy: BoundedCopy,
 ): CopiedStream {
 	const reader = source.getReader();
-	const copy = new BoundedCopy(limit);
 	const body = new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
@@ -117,40 +154,65 @@ function keepingACopy(
 }
 
 class BoundedCopy {
-	private chunks: Uint8Array[] | undefined = [];
+	private buffer: Uint8Array | undefined;
 	private size = 0;
 	private readonly finished = Promise.withResolvers<Uint8Array | undefined>();
 	readonly bytes = this.finished.promise;
 
-	constructor(private readonly limit: number) {}
+	constructor(
+		private readonly limit: number,
+		private readonly declared: DeclaredLength,
+	) {
+		this.buffer = new Uint8Array(Math.min(declared.bytes, limit));
+	}
 
 	keep(chunk: Uint8Array): void {
-		this.size += chunk.byteLength;
-		if (this.size > this.limit) {
+		if (this.buffer === undefined) {
+			return;
+		}
+		const size = this.size + chunk.byteLength;
+		if (size > this.limit || this.overrunsDeclaredLength(size)) {
 			this.abandon();
 			return;
 		}
-		this.chunks?.push(chunk);
+		if (size > this.buffer.byteLength) {
+			this.buffer = grown(this.buffer, this.size, size, this.limit);
+		}
+		this.buffer.set(chunk, this.size);
+		this.size = size;
 	}
 
 	complete(): void {
-		this.finished.resolve(this.chunks && joined(this.chunks));
+		if (this.fallsShortOfDeclaredLength()) {
+			this.abandon();
+			return;
+		}
+		this.finished.resolve(this.buffer?.subarray(0, this.size));
 	}
 
 	abandon(): void {
-		this.chunks = undefined;
+		this.buffer = undefined;
 		this.finished.resolve(undefined);
+	}
+
+	private overrunsDeclaredLength(size: number): boolean {
+		return this.declared.exact && size > this.declared.bytes;
+	}
+
+	private fallsShortOfDeclaredLength(): boolean {
+		return this.declared.exact && this.size < this.declared.bytes;
 	}
 }
 
-function joined(chunks: Uint8Array[]): Uint8Array {
-	const bytes = new Uint8Array(
-		chunks.reduce((length, chunk) => length + chunk.byteLength, 0),
+function grown(
+	buffer: Uint8Array,
+	filled: number,
+	needed: number,
+	limit: number,
+): Uint8Array {
+	const larger = new Uint8Array(
+		Math.min(limit, Math.max(needed, buffer.byteLength * 2)),
 	);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return bytes;
+	larger.set(buffer.subarray(0, filled));
+	return larger;
 }

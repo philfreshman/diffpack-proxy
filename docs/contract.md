@@ -75,8 +75,16 @@ without contacting upstream.
   smaller. One that declares a larger `Content-Length`, or passes 5 MB while streaming, is
   streamed through without being kept. Errors, upstream answers with a status other than
   `200` (such as a partial `206`) and answers to `HEAD` are never kept.
+- An answer whose length differs from the `Content-Length` upstream declared is streamed to the
+  client in full but not kept, so a truncated or overlong archive is never cached. When upstream
+  compressed the answer (`Content-Encoding` other than `identity`), `Content-Length` counts the
+  compressed bytes, so the check does not apply and every decoded byte is kept.
 - An answer from the cache goes through every other rule first: the origin check, the archive
   listing check, the search text check and the daily quota. It counts against the budget like any other request.
+- A failing cache never fails the request. If the lookup throws or rejects, the answer comes from upstream
+  exactly as on a miss and says `miss`, after the same checks and with the same single count
+  against the budget. If storing a copy fails, the client has already received
+  the whole answer and nothing is kept.
 - On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
 
 Successful p2, archive and Go search answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
