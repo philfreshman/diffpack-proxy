@@ -18,6 +18,7 @@ const PREFLIGHT_HEADERS = {
 };
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
+const HOSTS_WITHOUT_EDGE_CACHE = ".workers.dev";
 
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
@@ -52,8 +53,15 @@ export function createProxy({
 		return new Date(now());
 	}
 
-	function relayFor(context: BackgroundWork | undefined): Relay {
-		if (edgeCache === undefined || context === undefined) {
+	function relayFor(
+		request: Request,
+		context: BackgroundWork | undefined,
+	): Relay {
+		if (
+			edgeCache === undefined ||
+			context === undefined ||
+			!hasEdgeCache(request)
+		) {
 			return upstream.relay;
 		}
 		return cachingRelay(upstream, edgeCache, context);
@@ -137,7 +145,7 @@ export function createProxy({
 			const origin = request.headers.get("Origin");
 			const response = withCorsHeadersFor(
 				origin,
-				await answerWithinQuota(request, origin, relayFor(context)),
+				await answerWithinQuota(request, origin, relayFor(request, context)),
 			);
 			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
@@ -147,6 +155,10 @@ export function createProxy({
 async function withoutBody(response: Response): Promise<Response> {
 	await response.body?.cancel();
 	return new Response(null, response);
+}
+
+function hasEdgeCache(request: Request): boolean {
+	return !new URL(request.url).hostname.endsWith(HOSTS_WITHOUT_EDGE_CACHE);
 }
 
 function isExemptFromQuota({ method }: Request, route: Route): boolean {

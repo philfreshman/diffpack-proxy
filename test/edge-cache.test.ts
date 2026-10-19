@@ -27,6 +27,25 @@ function codeloadCalls(upstream: ReturnType<typeof stubUpstream>) {
 	return upstream.calls.filter((call) => call.url === CODELOAD);
 }
 
+function recordingCache(cache: Cache) {
+	const calls: string[] = [];
+	const recording: Pick<Cache, "match" | "put" | "delete"> = {
+		match(...args) {
+			calls.push("match");
+			return cache.match(...args);
+		},
+		put(...args) {
+			calls.push("put");
+			return cache.put(...args);
+		},
+		delete(...args) {
+			calls.push("delete");
+			return cache.delete(...args);
+		},
+	};
+	return { calls, cache: recording as Cache };
+}
+
 async function downloaded(response: Response): Promise<Uint8Array> {
 	return new Uint8Array(await response.arrayBuffer());
 }
@@ -44,5 +63,26 @@ describe("the edge cache on a custom domain", () => {
 		expect(await downloaded(second)).toEqual(ZIP_BYTES);
 		expect(second.headers.get("Content-Type")).toBe("application/zip");
 		expect(codeloadCalls(upstream)).toHaveLength(1);
+	});
+});
+
+describe("the edge cache on workers.dev", () => {
+	it("is not used, so every request streams straight from upstream", async () => {
+		const upstream = servingMonologZip();
+		const edgeCache = recordingCache(await freshEdgeCache());
+		const get = proxyFor(upstream, {
+			edgeCache: edgeCache.cache,
+			proxyOrigin: "https://diffpack-proxy.philipswiezak.workers.dev",
+		});
+
+		const first = await get(ARCHIVE_PATH);
+		expect(await downloaded(first)).toEqual(ZIP_BYTES);
+		await get.settled();
+		const second = await get(ARCHIVE_PATH);
+
+		expect(await downloaded(second)).toEqual(ZIP_BYTES);
+		expect(codeloadCalls(upstream)).toHaveLength(2);
+		expect(edgeCache.calls).toEqual([]);
+		expect(get.backgroundTasks).toEqual([]);
 	});
 });
