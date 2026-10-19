@@ -109,6 +109,9 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
   over its daily limit. This only happens if the requests that arrive after the budget is spent,
   plus the uncounted `/v1/health` checks and `OPTIONS` preflights, add up to more than the 10,000
   of headroom, or if another Worker in the same account uses the account's requests.
+- **One address sends too many requests, once the per-IP rate rule exists.** Cloudflare blocks it
+  for 10 seconds with its own answer, before the Worker runs (see "Per-IP rate rule"). That
+  answer has no CORS header either, so the app reports `proxy_unreachable` for those seconds.
 - **A request goes over 10 ms of CPU.** Cloudflare ends it with its own error page, which the
   browser also sees as a network failure. The proxy's work per request is far below this.
 
@@ -251,6 +254,55 @@ curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i 
 The first prints `miss` and the second `hit`. For `symfony/symfony`, take a current dist URL from
 `https://repo.packagist.org/p2/symfony/symfony.json`: its archive is larger than 5 MB, so it should
 answer `bypass` and arrive whole. Each request costs one count from the budget.
+
+## Per-IP rate rule
+
+The daily budget is shared by everyone, so one client sending requests in a loop can use it up.
+One Cloudflare WAF rate-limiting rule slows such a client down. The free plan includes one rule,
+but it only applies to a zone on Cloudflare, so this too waits for decision D2. It is dashboard
+configuration, not code. Status: documented, not yet created, hand test pending until the custom
+domain exists.
+
+Once the zone is on Cloudflare, open it and go to **Security > WAF > Rate limiting rules >
+Create rule**, then set:
+
+| Setting | Value |
+| :- | :- |
+| Rule name | `diffpack-proxy per-IP limit` |
+| If incoming requests match | **URI Path** **starts with** `/v1/`, which is the expression `(starts_with(http.request.uri.path, "/v1/"))` |
+| With the same characteristics | **IP** (the only choice on the free plan) |
+| When rate exceeds | **60** requests per **10 seconds** |
+| Then take action | **Block** |
+| For duration | **10 seconds** (the only choice on the free plan) |
+
+Then select **Deploy**.
+
+- **Why these numbers.** One comparison in the app costs about three proxy requests: one p2 read
+  and two archives. A person stays far below 60 in 10 seconds, even switching versions quickly.
+  The free plan only counts over 10 seconds and only blocks for 10 seconds.
+- **What it does not do.** It caps one address at 6 requests a second, so one client needs over
+  4 hours instead of minutes to use up 90,000. That buys time to notice in the dashboard; it does
+  not stop a client that keeps going or uses many addresses. Many readers behind one address, such
+  as an office network, share the limit, which is why it is generous.
+- **The rule matches paths only.** The free plan cannot match a host name, so the rule covers
+  every proxied host in the zone. diffpack's own pages do not start with `/v1/`. If another
+  proxied host in the zone ever does, it is limited too.
+- **A blocked request never reaches the Worker**, so it costs no Worker request and no count
+  from the budget. Cloudflare answers it with its own `429` page, which has no CORS header, so in
+  the browser `fetch` fails like being offline and the app reports `proxy_unreachable` until the
+  10 seconds are over. `/v1/health` checks from outside are limited like everything else.
+
+To test it by hand once (pending until D2), send more than 60 requests within 10 seconds from one
+machine and look at the status codes:
+
+```bash
+for request in $(seq 1 70); do
+  curl -s -o /dev/null -w '%{http_code}\n' https://proxy.diffpack.io/v1/health
+done | sort | uniq -c
+```
+
+Expect about 60 `200` answers and the rest `429`, and a `200` again after 10 seconds. The
+`/v1/health` path costs nothing from the budget. The blocks show under **Security > Events**.
 
 ## The daily quota counter
 

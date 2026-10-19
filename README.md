@@ -81,5 +81,5 @@ access.
 
 Every push to `main` deploys the Worker to Cloudflare and runs `scripts/smoke.sh` against it.
 [docs/operations.md](docs/operations.md) covers the first deploy, the smoke test, the free-plan
-limits, what people see when a limit is reached, usage, rollback, logging, the edge cache and where
-the daily counter runs.
+limits, what people see when a limit is reached, usage, rollback, logging, the edge cache, the
+per-IP rate rule and where the daily counter runs.
