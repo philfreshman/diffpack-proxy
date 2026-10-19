@@ -1,5 +1,6 @@
 import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { TEST_DAILY_BUDGET } from "./support/quota";
 
 const PROXY = "https://proxy.test";
 
@@ -13,6 +14,18 @@ describe("GET /v1/health", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ ok: true });
+	});
+});
+
+describe("GET /v1/status", () => {
+	it("reports the Worker's own counter and the configured budget", async () => {
+		const response = await get("/v1/status");
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			open: true,
+			budget: TEST_DAILY_BUDGET,
+		});
 	});
 });
 

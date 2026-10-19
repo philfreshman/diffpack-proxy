@@ -3,7 +3,8 @@
 This file guides Claude Code (claude.ai/code) when working in this repository.
 
 diffpack-proxy is a Cloudflare Worker in TypeScript that fetches Packagist metadata and Composer
-archives for the diffpack app and adds CORS headers. It streams bytes only and stores nothing.
+archives for the diffpack app and adds CORS headers. It streams bytes only, and the only thing it
+stores is today's request count.
 Its HTTP interface is [docs/contract.md](docs/contract.md): the app (`VITE_DIFFPACK_PROXY_ORIGIN`)
 and the wasm engine (`set_proxy_origin`) are its clients, so a change to a route, a header or an
 error code is a breaking change for both. Change the contract first, then the code.
@@ -28,6 +29,8 @@ the same on pull requests to `main` and pushes to `main`, from a frozen lockfile
 ## Layout
 
 - `src/index.ts`: the Worker entry point. It only wires real dependencies into factories.
+- `src/daily-quota.ts`: the `DailyQuota` Durable Object, the one counter of today's requests.
+  `src/lib/quota-guard.ts` asks it for a ticket on every counted request.
 - `src/lib/`: pure modules that take their side effects as parameters, for example
   `createProxy(…)`, so tests can pass stubs.
 - `src/lib/upstream.ts`: the only module that calls `fetch`. It applies the contract's upstream
@@ -37,6 +40,8 @@ the same on pull requests to `main` and pushes to `main`, from a frozen lockfile
   header). Reuse it for new error codes.
 - `test/`: Vitest tests through `@cloudflare/vitest-plugin`. They call the Worker through the
   runtime (`exports.default.fetch` from `cloudflare:workers`), the same seam a browser hits.
+  `vitest.config.ts` sets `DAILY_REQUEST_BUDGET` to 3, and `test/support/quota.ts` gives each
+  test proxy a fresh counter, so tests never share a count.
 - `wrangler.jsonc`: no `routes`, so the Worker deploys to `workers.dev`. Observability is off.
 
 The Worker runs on Cloudflare's runtime, not on Bun, so `src/` must not use `Bun.*` or Node-only

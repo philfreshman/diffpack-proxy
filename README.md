@@ -15,7 +15,7 @@ directly, without the proxy.
 ## What it stores
 
 Nothing. It streams bytes through without unpacking, storing or logging them, and it never sees
-a diff. The only state it will keep is a count of today's requests, so it can stop itself before
+a diff. The only state it keeps is a count of today's requests, so it can stop itself before
 Cloudflare's free daily limit is reached.
 
 The routes, headers and error codes are described in [docs/contract.md](docs/contract.md).
@@ -28,6 +28,29 @@ version metadata from Packagist and checks that the archive's URL is in it. That
 subrequest the Worker makes, not a request to the Worker, so it costs nothing from the daily
 request budget. Each running copy of the Worker keeps the metadata in memory for 5 minutes, so the
 two archives of one comparison need one read.
+
+## The daily budget
+
+Cloudflare's free plan runs a Worker for 100,000 requests a day and resets the count at 00:00 UTC.
+The limit is daily, not monthly. Past it, Cloudflare answers with its own "Error 1027" page, which
+has no CORS header, so the app cannot read it and cannot tell people what happened.
+
+So the proxy counts its own requests in one Durable Object (a single small database that every
+Cloudflare location talks to) and stops a little earlier, at `DAILY_REQUEST_BUDGET` requests,
+90,000 by default. After that it answers `503 quota_exhausted` with the reset time, which the app
+can show, until 00:00 UTC. The 10,000 left over cover the requests that keep arriving after the
+budget is spent, since each of them still runs the Worker. `/v1/health` and `OPTIONS` preflights
+are not counted. `GET /v1/status` shows today's count, for example
+`curl http://localhost:8787/v1/status`.
+
+To change the budget, edit `vars.DAILY_REQUEST_BUDGET` in `wrangler.jsonc` and deploy. Keep it
+below 100,000. To try a small budget locally, pass it to Wrangler:
+
+```bash
+bun run dev --var DAILY_REQUEST_BUDGET:3
+```
+
+[docs/operations.md](docs/operations.md) describes where the counter runs.
 
 ## Run it locally
 
