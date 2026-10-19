@@ -94,6 +94,27 @@ describe("the daily quota", () => {
 		);
 	});
 
+	it.each([
+		[
+			"an archive",
+			`/v1/composer/archive?${new URLSearchParams({
+				package: "monolog/monolog",
+				url: "https://api.github.com/repos/Seldaek/monolog/zipball/d7059e4c691d05ea1222b5124bed0f961be46e15",
+			})}`,
+		],
+		["an unknown path", "/v1/nope"],
+	])("refuses %s once the day is used up", async (_, path) => {
+		const proxy = proxyAt(NOON);
+		await sendBeyondTheBudget(proxy, STATUS_PATH);
+
+		const response = await send(proxy, path);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"quota_exhausted",
+		);
+	});
+
 	it("opens again at 00:00 UTC and counts from zero", async () => {
 		const clock = settableClock("2026-10-19T23:59:59Z");
 		const proxy = proxyAt(clock);
