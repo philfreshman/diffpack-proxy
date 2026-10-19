@@ -14,7 +14,7 @@ Only `GET`, `HEAD` and `OPTIONS` are accepted. `HEAD` answers with the same stat
 | :- | :- | :- |
 | `GET /v1/composer/p2/{vendor}/{package}.json` | `https://repo.packagist.org/p2/{vendor}/{package}.json` | `200`, body passed through unchanged, `Content-Type: application/json`, `Cache-Control: public, max-age=300` |
 | `GET /v1/composer/archive?package={vendor}/{package}&url={dist URL, URL-encoded}` | See the archive table | `200`, streamed, `Content-Type: application/zip`, `Cache-Control: public, max-age=31536000, immutable` |
-| `GET /v1/status` | none | `200 {"open": true, "used": 1234, "budget": 90000, "resetsAt": "2026-10-20T00:00:00Z"}` |
+| `GET /v1/status` | none | `200 {"open": true, "used": 1234, "budget": 90000, "resetsAt": "2026-10-20T00:00:00Z"}`. See "Daily quota". |
 | `GET /v1/health` | none | `200 {"ok": true}`. Skips the quota counter, so keep monitoring infrequent: Cloudflare still counts it. |
 
 `{vendor}/{package}` must match Composer's name rule,
@@ -61,6 +61,23 @@ counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
   requests send `User-Agent: diffpack-proxy (+https://diffpack.io)`, as Packagist asks.
   No upstream response header is passed back, `Set-Cookie` included.
 
+## Daily quota
+
+The proxy counts its own requests per UTC day and stops before Cloudflare's free daily limit,
+with an answer the browser can read.
+
+- Every request counts against the day's budget (`DAILY_REQUEST_BUDGET`, 90,000), refused ones
+  included, except `/v1/health` and `OPTIONS` preflights.
+- The count restarts at 00:00 UTC.
+- Once the budget is used up, every counted request answers `503 quota_exhausted` until the next
+  00:00 UTC. So does every counted request while the counter itself cannot be reached: the proxy
+  fails closed.
+- `/v1/status` counts like any request and always asks the counter, so it reports the live count.
+  `open` is `false` once the day is used up, and the answer stays `200` so monitoring can read
+  it. `used` is today's count including this request, and it keeps growing past `budget` while
+  requests arrive. `resetsAt` is the next 00:00 UTC. Only when the counter cannot be reached does
+  `/v1/status` answer `503 quota_exhausted`.
+
 ## Errors
 
 Every error has a JSON body `{"error": "<code>", "message": "<one sentence for people>", …}` and
@@ -76,7 +93,7 @@ upstream one.
 | 404 | `not_found` | Packagist or the archive host answered 404, or the path matches no route | |
 | 405 | `method_not_allowed` | not GET, HEAD or OPTIONS, on any path; the answer carries `Allow: GET, HEAD, OPTIONS` | |
 | 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds, could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
-| 503 | `quota_exhausted` | today's budget is used up | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |
+| 503 | `quota_exhausted` | today's budget is used up, or the quota counter cannot be reached (see "Daily quota") | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |
 
 The `quota_exhausted` message reads: "diffpack's Composer proxy has used today's free allowance.
 It resets at 00:00 UTC."
