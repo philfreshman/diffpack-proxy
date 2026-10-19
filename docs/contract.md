@@ -77,6 +77,9 @@ without contacting upstream.
   `200` (such as a partial `206`) and answers to `HEAD` are never kept.
 - An answer from the cache goes through every other rule first: the origin check, the archive
   listing check, the search text check and the daily quota. It counts against the budget like any other request.
+- A failing cache never fails the request. If the lookup throws, the answer comes from upstream
+  exactly as on a miss and says `miss`. If storing a copy fails, the client has already received
+  the whole answer and nothing is kept.
 - On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
 
 Successful p2, archive and Go search answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from

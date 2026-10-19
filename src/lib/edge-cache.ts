@@ -35,7 +35,7 @@ export function cachingRelay(
 	background: BackgroundWork,
 ): Relay {
 	return async (url, headers, githubApiUrl) => {
-		const hit = await cache.match(url);
+		const hit = await ignoringCacheFailure(() => cache.match(url));
 		if (hit !== undefined) {
 			return answer(hit.body, headers, "hit");
 		}
@@ -82,7 +82,19 @@ async function storeCopy(
 ): Promise<void> {
 	const bytes = await copy;
 	if (bytes !== undefined) {
-		await cache.put(url, new Response(bytes, { headers }));
+		await ignoringCacheFailure(() =>
+			cache.put(url, new Response(bytes, { headers })),
+		);
+	}
+}
+
+async function ignoringCacheFailure<T>(
+	cacheCall: () => Promise<T>,
+): Promise<T | undefined> {
+	try {
+		return await cacheCall();
+	} catch {
+		return undefined;
 	}
 }
 

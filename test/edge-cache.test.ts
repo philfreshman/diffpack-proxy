@@ -439,3 +439,54 @@ describe("the edge cache on workers.dev", () => {
 		expect(get.backgroundTasks).toEqual([]);
 	});
 });
+
+const CACHE_FAILURE = new Error("Cache API unavailable");
+
+function cacheFailingOn(
+	cache: Cache,
+	{ match = false, put = false }: { match?: boolean; put?: boolean },
+): Cache {
+	const failing: Pick<Cache, "match" | "put" | "delete"> = {
+		match(...args) {
+			if (match) {
+				throw CACHE_FAILURE;
+			}
+			return cache.match(...args);
+		},
+		put(...args) {
+			return put ? Promise.reject(CACHE_FAILURE) : cache.put(...args);
+		},
+		delete(...args) {
+			return cache.delete(...args);
+		},
+	};
+	return failing as Cache;
+}
+
+describe("a failing edge cache on a custom domain", () => {
+	it("serves the archive from upstream as on a miss when the lookup throws", async () => {
+		const upstream = servingMonologZip();
+		const get = proxyFor(upstream, {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { match: true }),
+		});
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+		expect(await downloaded(response)).toEqual(ZIP_BYTES);
+		expect(codeloadCalls(upstream)).toHaveLength(1);
+	});
+
+	it("streams the whole archive and settles quietly when the write rejects", async () => {
+		const get = proxyFor(servingMonologZip(), {
+			edgeCache: cacheFailingOn(await freshEdgeCache(), { put: true }),
+		});
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.status).toBe(200);
+		expect(await downloaded(response)).toEqual(ZIP_BYTES);
+		await expect(get.settled()).resolves.toBeDefined();
+	});
+});
