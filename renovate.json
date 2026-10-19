@@ -1,0 +1,24 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"schedule": ["before 5am on the 1st and 15th day of the month"],
+	"automerge": true,
+	"automergeType": "pr",
+	"platformAutomerge": true,
+	"minimumReleaseAge": "3 days",
+	"lockFileMaintenance": {
+		"enabled": true,
+		"schedule": ["before 5am on the 1st day of the month"]
+	},
+	"packageRules": [
+		{
+			"labels": ["dependency-update"],
+			"matchPackageNames": ["*"]
+		},
+		{
+			"description": "The Vitest plugin depends on an exact wrangler version, so the two move together",
+			"groupName": "cloudflare",
+			"matchPackageNames": ["wrangler", "@cloudflare/**"]
+		}
+	]
+}
