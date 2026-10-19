@@ -30,11 +30,11 @@ function countingTakes(dailyQuota: QuotaCounter) {
 }
 
 function settableClock(time: string) {
-	let now = new Date(time);
+	let now = Date.parse(time);
 	return {
-		read: () => now,
+		now: () => now,
 		setTo(later: string) {
-			now = new Date(later);
+			now = Date.parse(later);
 		},
 	};
 }
@@ -47,7 +47,7 @@ function proxyAt(
 	}: QuotaProxyOptions = {},
 ) {
 	const clock = typeof time === "string" ? settableClock(time) : time;
-	return createProxy({ fetch: upstream.fetch, dailyQuota, clock: clock.read });
+	return createProxy({ fetch: upstream.fetch, dailyQuota, now: clock.now });
 }
 
 function send(

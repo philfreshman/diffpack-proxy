@@ -54,7 +54,6 @@ export function proxyFor(
 	const proxy = createProxy({
 		fetch: upstream.fetch,
 		dailyQuota,
-		clock: () => new Date(),
 		now,
 	});
 	return (

@@ -223,7 +223,6 @@ describe("a slow upstream server", () => {
 		return createProxy({
 			fetch: upstream.fetch,
 			dailyQuota: freshDailyQuota(),
-			clock: () => new Date(),
 			upstreamTimeoutMs: TIMEOUT_MS,
 		});
 	}

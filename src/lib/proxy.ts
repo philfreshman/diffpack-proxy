@@ -22,7 +22,6 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
 	dailyQuota: QuotaCounter;
-	clock: () => Date;
 	upstreamTimeoutMs?: number;
 	now?: Clock;
 }
@@ -35,13 +34,16 @@ interface Route {
 export function createProxy({
 	fetch,
 	dailyQuota,
-	clock,
 	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
 	now = Date.now,
 }: ProxyDependencies) {
 	const upstream = createUpstream(fetch, upstreamTimeoutMs);
 	const listing = createArchiveListing(upstream, now);
 	const quotaGuard = createQuotaGuard(dailyQuota);
+
+	function currentMoment(): Date {
+		return new Date(now());
+	}
 
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
@@ -50,7 +52,7 @@ export function createProxy({
 		if (pathname === STATUS_PATH) {
 			return {
 				answersWithoutOrigin: true,
-				answer: () => quotaGuard.status(clock()),
+				answer: () => quotaGuard.status(currentMoment()),
 			};
 		}
 		const p2Name = p2PackageName(pathname);
@@ -95,7 +97,9 @@ export function createProxy({
 		if (bypassesQuotaGuard(request, url)) {
 			return answer(request, url, origin);
 		}
-		return quotaGuard.admit(clock(), () => answer(request, url, origin));
+		return quotaGuard.admit(currentMoment(), () =>
+			answer(request, url, origin),
+		);
 	}
 
 	return {

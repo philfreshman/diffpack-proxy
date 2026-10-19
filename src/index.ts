@@ -15,5 +15,4 @@ function dailyQuota() {
 export default createProxy({
 	fetch: fetch.bind(globalThis),
 	dailyQuota: { take: (now) => dailyQuota().take(now) },
-	clock: () => new Date(),
 });
