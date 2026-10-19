@@ -23,14 +23,18 @@ export function stubUpstream(answers: UpstreamAnswers = {}) {
 	return { fetch, calls };
 }
 
+interface ProxyRequestInit extends RequestInit {
+	origin?: string | null;
+}
+
 export function proxyRequest(
 	upstream: ReturnType<typeof stubUpstream>,
 	path: string,
-	init: RequestInit = {},
+	{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},
 ): Promise<Response> {
 	const headers = new Headers(init.headers);
-	if (!headers.has("Origin")) {
-		headers.set("Origin", ALLOWED_ORIGIN);
+	if (origin !== null) {
+		headers.set("Origin", origin);
 	}
 	const proxy = createProxy({ fetch: upstream.fetch });
 	return proxy.fetch(new Request(`${PROXY}${path}`, { ...init, headers }));

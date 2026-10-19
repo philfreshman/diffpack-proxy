@@ -1,4 +1,5 @@
 import { p2PackageName, relayP2 } from "./composer";
+import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
 import { errorResponse } from "./errors";
 import { createUpstream, type UpstreamFetch } from "./upstream";
 
@@ -9,24 +10,67 @@ interface ProxyDependencies {
 	fetch: UpstreamFetch;
 }
 
+interface Route {
+	answersWithoutOrigin: boolean;
+	answer(): Promise<Response>;
+}
+
 export function createProxy({ fetch }: ProxyDependencies) {
 	const upstream = createUpstream(fetch);
+
+	function routeFor({ pathname }: URL): Route {
+		if (pathname === HEALTH_PATH) {
+			return { answersWithoutOrigin: true, answer: async () => health() };
+		}
+		const p2Name = p2PackageName(pathname);
+		if (p2Name !== undefined) {
+			return {
+				answersWithoutOrigin: false,
+				answer: () => relayP2(upstream, p2Name),
+			};
+		}
+		return { answersWithoutOrigin: true, answer: async () => noSuchRoute() };
+	}
+
+	async function answer(
+		request: Request,
+		origin: string | null,
+	): Promise<Response> {
+		if (!ALLOWED_METHODS.includes(request.method)) {
+			return methodNotAllowed();
+		}
+		const route = routeFor(new URL(request.url));
+		if (!originPermits(origin, route)) {
+			return originNotAllowed();
+		}
+		return route.answer();
+	}
+
 	return {
 		async fetch(request: Request): Promise<Response> {
-			if (!ALLOWED_METHODS.includes(request.method)) {
-				return methodNotAllowed();
-			}
-			const { pathname } = new URL(request.url);
-			if (pathname === HEALTH_PATH) {
-				return Response.json({ ok: true });
-			}
-			const p2Name = p2PackageName(pathname);
-			if (p2Name !== undefined) {
-				return relayP2(upstream, p2Name);
-			}
-			return errorResponse("not_found", "No route matches this path.");
+			const origin = request.headers.get("Origin");
+			return withCorsHeadersFor(origin, await answer(request, origin));
 		},
 	} satisfies ExportedHandler;
+}
+
+function originPermits(origin: string | null, route: Route): boolean {
+	return origin === null ? route.answersWithoutOrigin : isAllowedOrigin(origin);
+}
+
+function health(): Response {
+	return Response.json({ ok: true });
+}
+
+function noSuchRoute(): Response {
+	return errorResponse("not_found", "No route matches this path.");
+}
+
+function originNotAllowed(): Response {
+	return errorResponse(
+		"origin_not_allowed",
+		"The proxy only answers requests from diffpack.io.",
+	);
 }
 
 function methodNotAllowed(): Response {
