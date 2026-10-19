@@ -42,7 +42,8 @@ the answer is `403 archive_not_listed`. If that read fails, the archive is not f
 from Packagist answers `404 not_found`, and any other failure answers `502 upstream_failed`.
 Each copy of the Worker remembers a p2 file it read for 5 minutes, so the two archives of one
 comparison cost one Packagist read. It keeps at most 8 MB of p2 text and drops the oldest file
-first. Failed reads are not remembered.
+first. It also remembers each `package` and `url` pair it found listed for 10 minutes, so an
+archive Packagist stops listing can stay servable that long. Failed reads are not remembered.
 
 The GitHub rewrite skips `api.github.com`, which only answers with a redirect to `codeload` and
 counts against GitHub's 60-requests-per-hour limit for anonymous API calls.

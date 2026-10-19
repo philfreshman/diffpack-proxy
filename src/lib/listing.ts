@@ -7,12 +7,20 @@ export type ArchiveListing = ReturnType<typeof createArchiveListing>;
 
 const P2_TEXT_LIFETIME_MS = 5 * 60_000;
 const P2_TEXT_CAPACITY = 8 * 1024 * 1024;
+const VERIFIED_ARCHIVE_LIFETIME_MS = 10 * 60_000;
+const VERIFIED_ARCHIVE_CAPACITY = 1024 * 1024;
 
 export function createArchiveListing(upstream: Upstream, now: Clock) {
 	const p2Texts = createMemo<string>({
 		lifetimeMs: P2_TEXT_LIFETIME_MS,
 		capacity: P2_TEXT_CAPACITY,
 		sizeOf: (_packageName, text) => text.length,
+		now,
+	});
+	const verifiedArchives = createMemo<true>({
+		lifetimeMs: VERIFIED_ARCHIVE_LIFETIME_MS,
+		capacity: VERIFIED_ARCHIVE_CAPACITY,
+		sizeOf: (pair) => pair.length,
 		now,
 	});
 
@@ -33,11 +41,19 @@ export function createArchiveListing(upstream: Upstream, now: Clock) {
 			packageName: string,
 			distUrl: string,
 		): Promise<Response | undefined> {
+			const pair = `${packageName} ${distUrl}`;
+			if (verifiedArchives.get(pair)) {
+				return undefined;
+			}
 			const p2 = await p2TextOf(packageName);
 			if ("failure" in p2) {
 				return p2.failure;
 			}
-			return listsArchive(p2.text, distUrl) ? undefined : archiveNotListed();
+			if (!listsArchive(p2.text, distUrl)) {
+				return archiveNotListed();
+			}
+			verifiedArchives.set(pair, true);
+			return undefined;
 		},
 	};
 }

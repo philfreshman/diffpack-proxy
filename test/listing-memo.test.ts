@@ -139,3 +139,30 @@ describe("the p2 files remembered at once", () => {
 		expect(p2FetchesIn(upstream)).toBe(2);
 	});
 });
+
+describe("an archive found listed", () => {
+	it("is served again after 9 minutes without reading the p2 file again", async () => {
+		const upstream = servingMonolog();
+		const clock = manualClock();
+		const request = proxyFor(upstream, clock);
+
+		await request(archivePath(MONOLOG, NEW_DIST));
+		clock.advanceMinutes(9);
+		const again = await request(archivePath(MONOLOG, NEW_DIST));
+
+		expect(await again.text()).toBe("new zip");
+		expect(p2FetchesIn(upstream)).toBe(1);
+	});
+
+	it("is checked against a fresh p2 file after 10 minutes", async () => {
+		const upstream = servingMonolog();
+		const clock = manualClock();
+		const request = proxyFor(upstream, clock);
+
+		await request(archivePath(MONOLOG, NEW_DIST));
+		clock.advanceMinutes(10);
+		await request(archivePath(MONOLOG, NEW_DIST));
+
+		expect(p2FetchesIn(upstream)).toBe(2);
+	});
+});
