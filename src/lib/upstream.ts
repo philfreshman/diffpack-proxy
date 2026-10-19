@@ -10,6 +10,7 @@ export type Upstream = ReturnType<typeof createUpstream>;
 type UpstreamFailure = { failure: Response };
 type UpstreamSuccess = { answer: Response } | UpstreamFailure;
 export type UpstreamText = { text: string } | UpstreamFailure;
+type Credentials = Record<string, string>;
 
 const NOT_FOUND = 404;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -31,7 +32,7 @@ export function createUpstream(
 	async function fetchOrUndefined(
 		url: string,
 		signal: AbortSignal,
-		credentials: HeadersInit = {},
+		credentials: Credentials = {},
 	): Promise<Response | undefined> {
 		try {
 			return await fetch(url, {
@@ -47,7 +48,7 @@ export function createUpstream(
 	async function fetchFollowingRedirects(
 		url: string,
 		signal: AbortSignal,
-		credentials: HeadersInit = {},
+		credentials: Credentials = {},
 		redirectsLeft = MAX_REDIRECTS,
 	): Promise<Response | undefined> {
 		const answer = await fetchOrUndefined(url, signal, credentials);
@@ -64,7 +65,7 @@ export function createUpstream(
 
 	async function fetchHeadersInTime(
 		url: string,
-		credentials: HeadersInit = {},
+		credentials: Credentials = {},
 	): Promise<Response | undefined> {
 		const deadline = new AbortController();
 		const timer = setTimeout(() => deadline.abort(), timeoutMs);
