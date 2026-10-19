@@ -1,15 +1,116 @@
+import { ARCHIVE_PATH, relayArchive } from "./archive";
+import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
 import { errorResponse } from "./errors";
+import { p2PackageName, relayP2 } from "./p2";
+import { createUpstream, type UpstreamFetch } from "./upstream";
 
 const HEALTH_PATH = "/v1/health";
+const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
+const PREFLIGHT_HEADERS = {
+	"Access-Control-Allow-Methods": "GET, HEAD",
+	"Access-Control-Max-Age": "86400",
+};
 
-export function createProxy() {
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
+
+interface ProxyDependencies {
+	fetch: UpstreamFetch;
+	upstreamTimeoutMs?: number;
+}
+
+interface Route {
+	answersWithoutOrigin: boolean;
+	answer(): Promise<Response>;
+}
+
+export function createProxy({
+	fetch,
+	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
+}: ProxyDependencies) {
+	const upstream = createUpstream(fetch, upstreamTimeoutMs);
+
+	function routeFor({ pathname, searchParams }: URL): Route {
+		if (pathname === HEALTH_PATH) {
+			return { answersWithoutOrigin: true, answer: async () => health() };
+		}
+		const p2Name = p2PackageName(pathname);
+		if (p2Name !== undefined) {
+			return {
+				answersWithoutOrigin: false,
+				answer: () => relayP2(upstream, p2Name),
+			};
+		}
+		if (pathname === ARCHIVE_PATH) {
+			return {
+				answersWithoutOrigin: false,
+				answer: () => relayArchive(upstream, searchParams),
+			};
+		}
+		return { answersWithoutOrigin: true, answer: async () => noSuchRoute() };
+	}
+
+	async function answer(
+		request: Request,
+		origin: string | null,
+	): Promise<Response> {
+		if (!ALLOWED_METHODS.includes(request.method)) {
+			return methodNotAllowed();
+		}
+		const route = routeFor(new URL(request.url));
+		if (!originPermits(origin, route)) {
+			return originNotAllowed();
+		}
+		if (request.method === "OPTIONS") {
+			return preflight();
+		}
+		return route.answer();
+	}
+
 	return {
-		fetch(request: Request): Response {
-			const { pathname } = new URL(request.url);
-			if (pathname === HEALTH_PATH) {
-				return Response.json({ ok: true });
-			}
-			return errorResponse(404, "not_found", "No route matches this path.");
+		async fetch(request: Request): Promise<Response> {
+			const origin = request.headers.get("Origin");
+			const response = withCorsHeadersFor(
+				origin,
+				await answer(request, origin),
+			);
+			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
 	} satisfies ExportedHandler;
+}
+
+async function withoutBody(response: Response): Promise<Response> {
+	await response.body?.cancel();
+	return new Response(null, response);
+}
+
+function originPermits(origin: string | null, route: Route): boolean {
+	return origin === null ? route.answersWithoutOrigin : isAllowedOrigin(origin);
+}
+
+function preflight(): Response {
+	return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
+}
+
+function health(): Response {
+	return Response.json({ ok: true });
+}
+
+function noSuchRoute(): Response {
+	return errorResponse("not_found", "No route matches this path.");
+}
+
+function originNotAllowed(): Response {
+	return errorResponse(
+		"origin_not_allowed",
+		"The proxy only answers requests from diffpack.io.",
+	);
+}
+
+function methodNotAllowed(): Response {
+	const response = errorResponse(
+		"method_not_allowed",
+		"The proxy only answers GET, HEAD and OPTIONS.",
+	);
+	response.headers.set("Allow", ALLOWED_METHODS.join(", "));
+	return response;
 }

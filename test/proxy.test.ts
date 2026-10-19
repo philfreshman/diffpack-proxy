@@ -28,3 +28,20 @@ describe("an unknown path", () => {
 		});
 	});
 });
+
+describe("a method other than GET, HEAD or OPTIONS", () => {
+	it.each(["POST", "PUT", "DELETE", "PATCH"])(
+		"answers %s /v1/health with 405 method_not_allowed",
+		async (method) => {
+			const response = await exports.default.fetch(`${PROXY}/v1/health`, {
+				method,
+			});
+
+			expect(response.status).toBe(405);
+			expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+				"method_not_allowed",
+			);
+			expect(response.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
+		},
+	);
+});
