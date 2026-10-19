@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
 const SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
@@ -14,9 +15,10 @@ function archivePath(params: Record<string, string>): string {
 	return `/v1/composer/archive?${new URLSearchParams(params)}`;
 }
 
-function servingZipAt(url: string) {
+function servingListedZip(name: string, dist: string, source = dist) {
 	return stubUpstream({
-		[url]: () =>
+		[p2UpstreamUrl(name)]: () => new Response(p2Listing(name, [dist])),
+		[source]: () =>
 			new Response(ZIP_BYTES, {
 				headers: { "Content-Type": "application/octet-stream" },
 			}),
@@ -25,7 +27,7 @@ function servingZipAt(url: string) {
 
 describe("GET /v1/composer/archive", () => {
 	it("fetches a GitHub archive from codeload and streams it back", async () => {
-		const upstream = servingZipAt(CODELOAD);
+		const upstream = servingListedZip("monolog/monolog", GITHUB_DIST, CODELOAD);
 
 		const response = await proxyRequest(
 			upstream,
@@ -38,14 +40,17 @@ describe("GET /v1/composer/archive", () => {
 		expect(response.headers.get("Cache-Control")).toBe(
 			"public, max-age=31536000, immutable",
 		);
-		expect(upstream.calls.map((call) => call.url)).toEqual([CODELOAD]);
+		expect(upstream.calls.map((call) => call.url)).toEqual([
+			p2UpstreamUrl("monolog/monolog"),
+			CODELOAD,
+		]);
 	});
 
 	it.each([
 		["Bitbucket", "yicr/php-simple-json-api-client", BITBUCKET_DIST],
 		["gitlab.com", "consensus/behat-drupal-context", GITLAB_DIST],
 	])("fetches a %s archive from the listed URL", async (_, name, dist) => {
-		const upstream = servingZipAt(dist);
+		const upstream = servingListedZip(name, dist);
 
 		const response = await proxyRequest(
 			upstream,
@@ -55,14 +60,17 @@ describe("GET /v1/composer/archive", () => {
 		expect(response.status).toBe(200);
 		expect(new Uint8Array(await response.arrayBuffer())).toEqual(ZIP_BYTES);
 		expect(response.headers.get("Content-Type")).toBe("application/zip");
-		expect(upstream.calls.map((call) => call.url)).toEqual([dist]);
+		expect(upstream.calls.map((call) => call.url)).toEqual([
+			p2UpstreamUrl(name),
+			dist,
+		]);
 	});
 });
 
 describe("HEAD /v1/composer/archive", () => {
 	it("answers with the archive headers and no body", async () => {
 		const response = await proxyRequest(
-			servingZipAt(CODELOAD),
+			servingListedZip("monolog/monolog", GITHUB_DIST, CODELOAD),
 			archivePath({ package: "monolog/monolog", url: GITHUB_DIST }),
 			{ method: "HEAD" },
 		);
@@ -219,7 +227,7 @@ describe("a hostile archive package", () => {
 		["a dot-dot segment", { package: "../monolog", url: GITHUB_DIST }],
 		["a missing name", { url: GITHUB_DIST }],
 	])("with %s is refused as invalid_request", async (_, params) => {
-		const upstream = servingZipAt(CODELOAD);
+		const upstream = servingListedZip("monolog/monolog", GITHUB_DIST, CODELOAD);
 
 		const response = await proxyRequest(upstream, archivePath(params));
 
@@ -231,7 +239,7 @@ describe("a hostile archive package", () => {
 	});
 
 	it("given twice is refused as invalid_request", async () => {
-		const upstream = servingZipAt(CODELOAD);
+		const upstream = servingListedZip("monolog/monolog", GITHUB_DIST, CODELOAD);
 
 		const response = await proxyRequest(
 			upstream,

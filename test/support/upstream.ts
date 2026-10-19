@@ -30,15 +30,31 @@ interface ProxyRequestInit extends RequestInit {
 	origin?: string | null;
 }
 
+interface TestProxyOptions {
+	now?: () => number;
+}
+
+export function proxyFor(
+	upstream: ReturnType<typeof stubUpstream>,
+	options: TestProxyOptions = {},
+) {
+	const proxy = createProxy({ fetch: upstream.fetch, ...options });
+	return (
+		path: string,
+		{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},
+	): Promise<Response> => {
+		const headers = new Headers(init.headers);
+		if (origin !== null) {
+			headers.set("Origin", origin);
+		}
+		return proxy.fetch(new Request(`${PROXY}${path}`, { ...init, headers }));
+	};
+}
+
 export function proxyRequest(
 	upstream: ReturnType<typeof stubUpstream>,
 	path: string,
-	{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},
+	init: ProxyRequestInit = {},
 ): Promise<Response> {
-	const headers = new Headers(init.headers);
-	if (origin !== null) {
-		headers.set("Origin", origin);
-	}
-	const proxy = createProxy({ fetch: upstream.fetch });
-	return proxy.fetch(new Request(`${PROXY}${path}`, { ...init, headers }));
+	return proxyFor(upstream)(path, init);
 }

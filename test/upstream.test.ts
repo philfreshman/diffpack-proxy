@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProxy } from "../src/lib/proxy";
+import { p2Listing } from "./support/packagist";
 import {
 	ALLOWED_ORIGIN,
 	PROXY,
@@ -108,9 +109,11 @@ describe("redirects from upstream servers", () => {
 		"are followed to an allowed host after a %i",
 		async (status) => {
 			const sha = "d7059e4c691d05ea1222b5124bed0f961be46e15";
+			const dist = `https://api.github.com/repos/Seldaek/monolog/zipball/${sha}`;
 			const oldOwner = `https://codeload.github.com/Seldaek/monolog/legacy.zip/${sha}`;
 			const newOwner = `https://codeload.github.com/monolog/monolog/legacy.zip/${sha}`;
 			const upstream = stubUpstream({
+				[P2_UPSTREAM]: () => new Response(p2Listing("monolog/monolog", [dist])),
 				[oldOwner]: redirectTo(newOwner, status),
 				[newOwner]: () => new Response("zip"),
 			});
@@ -119,13 +122,14 @@ describe("redirects from upstream servers", () => {
 				upstream,
 				`/v1/composer/archive?${new URLSearchParams({
 					package: "monolog/monolog",
-					url: `https://api.github.com/repos/Seldaek/monolog/zipball/${sha}`,
+					url: dist,
 				})}`,
 			);
 
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe("zip");
 			expect(upstream.calls.map((call) => call.url)).toEqual([
+				P2_UPSTREAM,
 				oldOwner,
 				newOwner,
 			]);
