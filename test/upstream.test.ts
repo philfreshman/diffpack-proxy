@@ -42,3 +42,118 @@ describe("requests to upstream servers", () => {
 		expect(response.headers.has("Set-Cookie")).toBe(false);
 	});
 });
+
+function redirectTo(location: string, status = 302) {
+	return () => new Response(null, { status, headers: { Location: location } });
+}
+
+describe("redirects from upstream servers", () => {
+	const hop = (n: number) =>
+		`https://repo.packagist.org/p2/monolog/monolog.json?hop=${n}`;
+
+	it.each([301, 302, 303, 307, 308])(
+		"are followed to an allowed host after a %i",
+		async (status) => {
+			const sha = "d7059e4c691d05ea1222b5124bed0f961be46e15";
+			const oldOwner = `https://codeload.github.com/Seldaek/monolog/legacy.zip/${sha}`;
+			const newOwner = `https://codeload.github.com/monolog/monolog/legacy.zip/${sha}`;
+			const upstream = stubUpstream({
+				[oldOwner]: redirectTo(newOwner, status),
+				[newOwner]: () => new Response("zip"),
+			});
+
+			const response = await proxyRequest(
+				upstream,
+				`/v1/composer/archive?${new URLSearchParams({
+					package: "monolog/monolog",
+					url: `https://api.github.com/repos/Seldaek/monolog/zipball/${sha}`,
+				})}`,
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe("zip");
+			expect(upstream.calls.map((call) => call.url)).toEqual([
+				oldOwner,
+				newOwner,
+			]);
+		},
+	);
+
+	it("resolve a relative Location against the URL that answered", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: redirectTo("/p2/monolog/renamed.json"),
+			"https://repo.packagist.org/p2/monolog/renamed.json": () =>
+				new Response("{}"),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect(response.status).toBe(200);
+	});
+
+	it("are followed up to three times", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: redirectTo(hop(1)),
+			[hop(1)]: redirectTo(hop(2)),
+			[hop(2)]: redirectTo(hop(3)),
+			[hop(3)]: () => new Response("{}"),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect(response.status).toBe(200);
+	});
+
+	it("are refused after three", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: redirectTo(hop(1)),
+			[hop(1)]: redirectTo(hop(2)),
+			[hop(2)]: redirectTo(hop(3)),
+			[hop(3)]: redirectTo(hop(4)),
+			[hop(4)]: () => new Response("{}"),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+			upstreamStatus: 302,
+		});
+		expect(upstream.calls).toHaveLength(4);
+	});
+
+	it.each([
+		["another host", "https://evil.example/monolog.json"],
+		["a lookalike host", "https://repo.packagist.org.evil.example/x.json"],
+		["plain http", "http://repo.packagist.org/p2/monolog/monolog.json"],
+		["user info", "https://x@repo.packagist.org/p2/monolog/monolog.json"],
+		["a port", "https://repo.packagist.org:8443/p2/monolog/monolog.json"],
+	])("to %s are refused", async (_, location) => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: redirectTo(location),
+			[location]: () => new Response("{}"),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+			upstreamStatus: 302,
+		});
+		expect(upstream.calls).toHaveLength(1);
+	});
+
+	it("without a Location are refused", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: () => new Response(null, { status: 302 }),
+		});
+
+		const response = await proxyRequest(upstream, P2_PATH);
+
+		expect(response.status).toBe(502);
+	});
+});

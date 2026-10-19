@@ -8,6 +8,14 @@ export type UpstreamFetch = (
 export type Upstream = ReturnType<typeof createUpstream>;
 
 const NOT_FOUND = 404;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 3;
+const UPSTREAM_HOSTS = new Set([
+	"repo.packagist.org",
+	"codeload.github.com",
+	"bitbucket.org",
+	"gitlab.com",
+]);
 const UPSTREAM_REQUEST: RequestInit = {
 	headers: { "User-Agent": "diffpack-proxy (+https://diffpack.io)" },
 	redirect: "manual",
@@ -22,9 +30,25 @@ export function createUpstream(fetch: UpstreamFetch) {
 		}
 	}
 
+	async function fetchFollowingRedirects(
+		url: string,
+		redirectsLeft = MAX_REDIRECTS,
+	): Promise<Response | undefined> {
+		const answer = await fetchOrUndefined(url);
+		if (answer === undefined || redirectsLeft === 0) {
+			return answer;
+		}
+		const target = allowedRedirectTarget(answer, url);
+		if (target === undefined) {
+			return answer;
+		}
+		await answer.body?.cancel();
+		return fetchFollowingRedirects(target, redirectsLeft - 1);
+	}
+
 	return {
 		async relay(url: string, headers: HeadersInit): Promise<Response> {
-			const answer = await fetchOrUndefined(url);
+			const answer = await fetchFollowingRedirects(url);
 			if (answer === undefined) {
 				return upstreamFailed();
 			}
@@ -35,6 +59,31 @@ export function createUpstream(fetch: UpstreamFetch) {
 			return new Response(answer.body, { headers });
 		},
 	};
+}
+
+function allowedRedirectTarget(
+	answer: Response,
+	from: string,
+): string | undefined {
+	const location = answer.headers.get("Location");
+	if (!REDIRECT_STATUSES.has(answer.status) || location === null) {
+		return undefined;
+	}
+	if (!URL.canParse(location, from)) {
+		return undefined;
+	}
+	const target = new URL(location, from);
+	return isUpstreamUrl(target) ? target.href : undefined;
+}
+
+function isUpstreamUrl(url: URL): boolean {
+	return (
+		url.protocol === "https:" &&
+		url.username === "" &&
+		url.password === "" &&
+		url.port === "" &&
+		UPSTREAM_HOSTS.has(url.hostname)
+	);
 }
 
 function failureFor(upstreamStatus: number): Response {
