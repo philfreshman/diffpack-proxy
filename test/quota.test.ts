@@ -18,6 +18,17 @@ function servingP2() {
 	return stubUpstream({ [P2_UPSTREAM]: () => new Response("{}") });
 }
 
+function countingTakes(dailyQuota: QuotaCounter) {
+	const takes: Date[] = [];
+	return {
+		takes,
+		take(now: Date) {
+			takes.push(now);
+			return dailyQuota.take(now);
+		},
+	};
+}
+
 function settableClock(time: string) {
 	let now = new Date(time);
 	return {
@@ -99,6 +110,31 @@ describe("the daily quota", () => {
 			budget: TEST_DAILY_BUDGET,
 			resetsAt: "2026-10-21T00:00:00Z",
 		});
+	});
+});
+
+describe("a proxy that saw the day used up", () => {
+	it("refuses further requests without asking the counter again", async () => {
+		const dailyQuota = countingTakes(freshDailyQuota());
+		const proxy = proxyAt(NOON, { dailyQuota });
+		await sendBeyondTheBudget(proxy, P2_PATH);
+		const takesSoFar = dailyQuota.takes.length;
+
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.status).toBe(503);
+		expect(dailyQuota.takes).toHaveLength(takesSoFar);
+	});
+
+	it("does not ask upstream either", async () => {
+		const upstream = servingP2();
+		const proxy = proxyAt(NOON, { upstream });
+		await sendBeyondTheBudget(proxy, P2_PATH);
+		const upstreamCallsSoFar = upstream.calls.length;
+
+		await send(proxy, P2_PATH);
+
+		expect(upstream.calls).toHaveLength(upstreamCallsSoFar);
 	});
 });
 

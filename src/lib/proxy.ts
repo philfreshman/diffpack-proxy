@@ -4,9 +4,9 @@ import { errorResponse } from "./errors";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
 import { p2PackageName, relayP2 } from "./p2";
-import { type QuotaCounter, quotaExhausted } from "./quota";
+import type { QuotaCounter } from "./quota";
+import { createQuotaGuard } from "./quota-guard";
 import { createUpstream, type UpstreamFetch } from "./upstream";
-import { isoTimestamp } from "./utc-day";
 
 const HEALTH_PATH = "/v1/health";
 const STATUS_PATH = "/v1/status";
@@ -41,23 +41,17 @@ export function createProxy({
 }: ProxyDependencies) {
 	const upstream = createUpstream(fetch, upstreamTimeoutMs);
 	const listing = createArchiveListing(upstream, now);
-
-	async function status(): Promise<Response> {
-		const { allowed, used, budget, resetsAt } = await dailyQuota.take(clock());
-		return Response.json({
-			open: allowed,
-			used,
-			budget,
-			resetsAt: isoTimestamp(resetsAt),
-		});
-	}
+	const quotaGuard = createQuotaGuard(dailyQuota);
 
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
 			return { answersWithoutOrigin: true, answer: async () => health() };
 		}
 		if (pathname === STATUS_PATH) {
-			return { answersWithoutOrigin: true, answer: status };
+			return {
+				answersWithoutOrigin: true,
+				answer: () => quotaGuard.status(clock()),
+			};
 		}
 		const p2Name = p2PackageName(pathname);
 		if (p2Name !== undefined) {
@@ -101,16 +95,7 @@ export function createProxy({
 		if (bypassesQuotaGuard(url)) {
 			return answer(request, url, origin);
 		}
-		const now = clock();
-		const [ticket, response] = await Promise.all([
-			dailyQuota.take(now),
-			answer(request, url, origin),
-		]);
-		if (ticket.allowed) {
-			return response;
-		}
-		await response.body?.cancel();
-		return quotaExhausted(ticket.resetsAt, now);
+		return quotaGuard.admit(clock(), () => answer(request, url, origin));
 	}
 
 	return {
