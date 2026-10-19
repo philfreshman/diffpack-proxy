@@ -8,10 +8,15 @@ export type Relay = (
 
 export type BackgroundWork = Pick<ExecutionContext, "waitUntil">;
 
+interface CopiedStream {
+	body: ReadableStream<Uint8Array>;
+	copy: Promise<Uint8Array | undefined>;
+}
+
 export function cachingRelay(
 	upstream: Upstream,
 	cache: Cache,
-	context: BackgroundWork,
+	background: BackgroundWork,
 ): Relay {
 	return async (url, headers, githubApiUrl) => {
 		const hit = await cache.match(url);
@@ -22,8 +27,62 @@ export function cachingRelay(
 		if ("failure" in fetched) {
 			return fetched.failure;
 		}
-		const [forClient, forCache] = fetched.answer.body?.tee() ?? [null, null];
-		context.waitUntil(cache.put(url, new Response(forCache, { headers })));
-		return new Response(forClient, { headers });
+		const { body, copy } = keepingACopy(fetched.answer.body);
+		background.waitUntil(storeCopy(cache, url, copy, headers));
+		return new Response(body, { headers });
 	};
+}
+
+async function storeCopy(
+	cache: Cache,
+	url: string,
+	copy: Promise<Uint8Array | undefined>,
+	headers: Record<string, string>,
+): Promise<void> {
+	const bytes = await copy;
+	if (bytes !== undefined) {
+		await cache.put(url, new Response(bytes, { headers }));
+	}
+}
+
+function keepingACopy(source: ReadableStream<Uint8Array> | null): CopiedStream {
+	const reader = (source ?? new ReadableStream()).getReader();
+	const chunks: Uint8Array[] = [];
+	const { promise: copy, resolve: finish } = Promise.withResolvers<
+		Uint8Array | undefined
+	>();
+	const body = new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			try {
+				const { done, value } = await reader.read();
+				if (done) {
+					controller.close();
+					finish(joined(chunks));
+					return;
+				}
+				chunks.push(value);
+				controller.enqueue(value);
+			} catch (error) {
+				finish(undefined);
+				controller.error(error);
+			}
+		},
+		async cancel(reason) {
+			finish(undefined);
+			await reader.cancel(reason);
+		},
+	});
+	return { body, copy };
+}
+
+function joined(chunks: Uint8Array[]): Uint8Array {
+	const bytes = new Uint8Array(
+		chunks.reduce((length, chunk) => length + chunk.byteLength, 0),
+	);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return bytes;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
+import { freshDailyQuota, TEST_DAILY_BUDGET } from "./support/quota";
 import { proxyFor, stubUpstream } from "./support/upstream";
 
 const SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
@@ -21,6 +22,41 @@ function servingMonologZip() {
 			new Response(p2Listing("monolog/monolog", [GITHUB_DIST])),
 		[CODELOAD]: () => new Response(ZIP_BYTES),
 	});
+}
+
+const CHUNKS_IN_DOWNLOAD = 3;
+
+function servingMonologZipUntilCancelled() {
+	const download = { cancelled: false };
+	let chunksLeft = CHUNKS_IN_DOWNLOAD;
+	const upstream = stubUpstream({
+		[p2UpstreamUrl("monolog/monolog")]: () =>
+			new Response(p2Listing("monolog/monolog", [GITHUB_DIST])),
+		[CODELOAD]: () =>
+			new Response(
+				new ReadableStream({
+					pull(controller) {
+						controller.enqueue(ZIP_BYTES);
+						chunksLeft -= 1;
+						if (chunksLeft === 0) {
+							controller.close();
+						}
+					},
+					cancel() {
+						download.cancelled = true;
+					},
+				}),
+			),
+	});
+	return { upstream, download };
+}
+
+async function usedUpDailyQuota() {
+	const dailyQuota = freshDailyQuota();
+	for (let request = 0; request < TEST_DAILY_BUDGET; request++) {
+		await dailyQuota.take(new Date());
+	}
+	return dailyQuota;
 }
 
 function codeloadCalls(upstream: ReturnType<typeof stubUpstream>) {
@@ -63,6 +99,26 @@ describe("the edge cache on a custom domain", () => {
 		expect(await downloaded(second)).toEqual(ZIP_BYTES);
 		expect(second.headers.get("Content-Type")).toBe("application/zip");
 		expect(codeloadCalls(upstream)).toHaveLength(1);
+	});
+});
+
+describe("an archive the counter refuses on a custom domain", () => {
+	it("cancels the download and leaves nothing in the edge cache", async () => {
+		const { upstream, download } = servingMonologZipUntilCancelled();
+		const edgeCache = await freshEdgeCache();
+		const refused = proxyFor(upstream, {
+			edgeCache,
+			dailyQuota: await usedUpDailyQuota(),
+		});
+
+		const response = await refused(ARCHIVE_PATH);
+		await refused.settled();
+		const nextDay = servingMonologZip();
+		await downloaded(await proxyFor(nextDay, { edgeCache })(ARCHIVE_PATH));
+
+		expect(response.status).toBe(503);
+		expect(download.cancelled).toBe(true);
+		expect(codeloadCalls(nextDay)).toHaveLength(1);
 	});
 });
 
