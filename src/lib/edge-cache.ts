@@ -12,6 +12,14 @@ const CACHE_OUTCOME_HEADER = "Diffpack-Proxy-Cache";
 
 type CacheOutcome = "hit" | "miss" | "bypass";
 
+interface DeclaredLength {
+	bytes: number;
+	exact: boolean;
+}
+
+const UNDECLARED_LENGTH: DeclaredLength = { bytes: 0, exact: false };
+const IDENTITY_ENCODING = "identity";
+
 export type BackgroundWork = Pick<ExecutionContext, "waitUntil">;
 
 interface CopiedStream {
@@ -49,7 +57,7 @@ export function cachingRelay(
 		}
 		const { body, copy } = keepingACopy(
 			source,
-			new BoundedCopy(LARGEST_CACHED_BYTES, declaredLength(fetched.answer)),
+			new BoundedCopy(LARGEST_CACHED_BYTES, declaredLengthOf(fetched.answer)),
 		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return answer(body, headers, "miss");
@@ -74,12 +82,22 @@ function isCacheable(answer: Response): boolean {
 }
 
 function declaresMoreThan(answer: Response, limit: number): boolean {
-	return declaredLength(answer) > limit;
+	return declaredLengthOf(answer).bytes > limit;
 }
 
-function declaredLength(answer: Response): number {
-	const length = Number(answer.headers.get("Content-Length"));
-	return Number.isSafeInteger(length) && length > 0 ? length : 0;
+function declaredLengthOf(answer: Response): DeclaredLength {
+	const bytes = Number(answer.headers.get("Content-Length"));
+	if (!Number.isSafeInteger(bytes) || bytes <= 0) {
+		return UNDECLARED_LENGTH;
+	}
+	return { bytes, exact: !isEncoded(answer) };
+}
+
+function isEncoded(answer: Response): boolean {
+	const encoding = answer.headers.get("Content-Encoding")?.trim().toLowerCase();
+	return (
+		encoding !== undefined && encoding !== "" && encoding !== IDENTITY_ENCODING
+	);
 }
 
 async function storeCopy(
@@ -143,9 +161,9 @@ class BoundedCopy {
 
 	constructor(
 		private readonly limit: number,
-		expectedSize: number,
+		private readonly declared: DeclaredLength,
 	) {
-		this.buffer = new Uint8Array(Math.min(expectedSize, limit));
+		this.buffer = new Uint8Array(Math.min(declared.bytes, limit));
 	}
 
 	keep(chunk: Uint8Array): void {
@@ -153,7 +171,7 @@ class BoundedCopy {
 			return;
 		}
 		const size = this.size + chunk.byteLength;
-		if (size > this.limit) {
+		if (size > this.limit || this.overrunsDeclaredLength(size)) {
 			this.abandon();
 			return;
 		}
@@ -165,12 +183,24 @@ class BoundedCopy {
 	}
 
 	complete(): void {
+		if (this.fallsShortOfDeclaredLength()) {
+			this.abandon();
+			return;
+		}
 		this.finished.resolve(this.buffer?.subarray(0, this.size));
 	}
 
 	abandon(): void {
 		this.buffer = undefined;
 		this.finished.resolve(undefined);
+	}
+
+	private overrunsDeclaredLength(size: number): boolean {
+		return this.declared.exact && size > this.declared.bytes;
+	}
+
+	private fallsShortOfDeclaredLength(): boolean {
+		return this.declared.exact && this.size < this.declared.bytes;
 	}
 }
 

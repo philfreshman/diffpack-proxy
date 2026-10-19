@@ -491,11 +491,20 @@ describe("a failing edge cache on a custom domain", () => {
 	});
 });
 
-function declaringLength(body: () => BodyInit, contentLength: number) {
+function declaringLength(
+	body: () => BodyInit,
+	contentLength: number,
+	contentEncoding?: string,
+) {
 	return servingMonologZip(
 		() =>
 			new Response(body(), {
-				headers: { "Content-Length": String(contentLength) },
+				headers: {
+					"Content-Length": String(contentLength),
+					...(contentEncoding === undefined
+						? {}
+						: { "Content-Encoding": contentEncoding }),
+				},
 			}),
 	);
 }
@@ -512,15 +521,13 @@ function inChunks(...chunks: Uint8Array[]): () => ReadableStream<Uint8Array> {
 		});
 }
 
+const TWO_ZIP_CHUNKS = new Uint8Array([...ZIP_BYTES, ...ZIP_BYTES]);
+
 describe("an archive's declared length on a custom domain", () => {
-	it.each([
-		["matches the bytes sent in several chunks", ZIP_BYTES.byteLength * 2],
-		["is shorter than the bytes sent, as after decompression", 3],
-		["is longer than the bytes sent", ZIP_BYTES.byteLength * 4],
-	])("still caches every byte when it %s", async (_, contentLength) => {
+	it("caches every byte when it matches the bytes sent in several chunks", async () => {
 		const upstream = declaringLength(
 			inChunks(ZIP_BYTES, ZIP_BYTES),
-			contentLength,
+			TWO_ZIP_CHUNKS.byteLength,
 		);
 		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
 
@@ -529,9 +536,55 @@ describe("an archive's declared length on a custom domain", () => {
 		const second = await get(ARCHIVE_PATH);
 
 		expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
-		expect(await downloaded(second)).toEqual(
-			new Uint8Array([...ZIP_BYTES, ...ZIP_BYTES]),
-		);
+		expect(await downloaded(second)).toEqual(TWO_ZIP_CHUNKS);
 		expect(codeloadCalls(upstream)).toHaveLength(1);
 	});
+
+	it.each([
+		["shorter than the bytes sent", 3],
+		["longer than the bytes sent", ZIP_BYTES.byteLength * 4],
+	])(
+		"still caches every decoded byte when it is %s of an encoded answer",
+		async (_, contentLength) => {
+			const upstream = declaringLength(
+				inChunks(ZIP_BYTES, ZIP_BYTES),
+				contentLength,
+				"gzip",
+			);
+			const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+			await downloaded(await get(ARCHIVE_PATH));
+			await get.settled();
+			const second = await get(ARCHIVE_PATH);
+
+			expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+			expect(await downloaded(second)).toEqual(TWO_ZIP_CHUNKS);
+			expect(codeloadCalls(upstream)).toHaveLength(1);
+		},
+	);
+
+	it.each([
+		["shorter than the bytes sent, so they overrun it", 3],
+		[
+			"longer than the bytes sent, so the archive is truncated",
+			ZIP_BYTES.byteLength * 4,
+		],
+	])(
+		"streams every byte but caches nothing when it is %s",
+		async (_, contentLength) => {
+			const upstream = declaringLength(
+				inChunks(ZIP_BYTES, ZIP_BYTES),
+				contentLength,
+			);
+			const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+			const first = await downloaded(await get(ARCHIVE_PATH));
+			await get.settled();
+			const second = await get(ARCHIVE_PATH);
+
+			expect(first).toEqual(TWO_ZIP_CHUNKS);
+			expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+			expect(codeloadCalls(upstream)).toHaveLength(2);
+		},
+	);
 });

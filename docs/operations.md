@@ -235,9 +235,12 @@ What it buys, and what it does not:
 - **Archives up to 5 MB only.** While an answer streams to the client, the proxy keeps a copy and
   stores it when the client has received all of it. The copy goes into a single buffer, sized
   from `Content-Length` when upstream sends one, so a 5 MB archive costs about 5 MB while it
-  streams instead of twice that. To bound memory in an isolate (128 MB), it keeps no copy of an answer that declares more than 5 MB and drops the copy of one that passes
-  5 MB while streaming. That covers well over 90% of Composer archives; larger ones, such as
-  `symfony/symfony`, stream through as before. A refused or abandoned request stores nothing.
+  streams instead of twice that. To bound memory in an isolate (128 MB), it keeps no copy of an
+  answer that declares more than 5 MB and drops the copy of one that passes 5 MB while streaming.
+  That covers well over 90% of Composer archives; larger ones, such as `symfony/symfony`, stream
+  through as before. It also drops the copy when an uncompressed answer ends shorter or runs
+  longer than its `Content-Length`, so a truncated archive is never cached. A refused or
+  abandoned request stores nothing.
 - **Entries.** They are keyed by the upstream URL (`https://codeload.github.com/…`,
   `https://repo.packagist.org/p2/…`, `https://pkg.go.dev/v1/search?…`). Archive URLs contain a
   commit SHA, so their content never changes; p2 files expire after 5 minutes and Go search
