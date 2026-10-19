@@ -29,6 +29,8 @@ export function createUpstream(
 	timeoutMs: number,
 	githubToken?: string,
 ) {
+	const githubCredentials = githubCredentialsFor(githubToken);
+
 	async function fetchOrUndefined(
 		url: string,
 		signal: AbortSignal,
@@ -81,13 +83,15 @@ export function createUpstream(
 		githubApiUrl: string | undefined,
 	): Promise<Response | undefined> {
 		const answer = await fetchHeadersInTime(url);
-		if (!githubToken || githubApiUrl === undefined || !isThrottled(answer)) {
+		if (
+			githubCredentials === undefined ||
+			githubApiUrl === undefined ||
+			!isThrottled(answer)
+		) {
 			return answer;
 		}
 		await answer.body?.cancel();
-		return fetchHeadersInTime(githubApiUrl, {
-			Authorization: `Bearer ${githubToken}`,
-		});
+		return fetchHeadersInTime(githubApiUrl, githubCredentials);
 	}
 
 	async function fetchSuccess(
@@ -126,6 +130,13 @@ export function createUpstream(
 			return readText(fetched.answer);
 		},
 	};
+}
+
+function githubCredentialsFor(
+	token: string | undefined,
+): Credentials | undefined {
+	const trimmed = token?.trim();
+	return trimmed ? { Authorization: `Bearer ${trimmed}` } : undefined;
 }
 
 function isThrottled(answer: Response | undefined): answer is Response {

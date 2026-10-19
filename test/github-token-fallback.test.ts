@@ -75,6 +75,7 @@ describe("a GitHub archive that codeload throttles", () => {
 	it.each([
 		["unset", undefined],
 		["empty", ""],
+		["only whitespace", " \n\t"],
 	])("answers as before when the token is %s", async (_, githubToken) => {
 		const upstream = githubServing(status(429), redirectTo(CODELOAD));
 
