@@ -48,9 +48,8 @@ export async function relayArchive(
 	if (!isComposerPackageName(params.get("package"))) {
 		return invalidPackageName();
 	}
-	const distUrls = params.getAll("url");
-	const [distUrl] = distUrls;
-	if (distUrls.length !== 1 || distUrl === undefined) {
+	const distUrl = singleValue(params, "url");
+	if (distUrl === undefined) {
 		return invalidArchiveUrl();
 	}
 	const host = hostnameOf(distUrl);
@@ -62,6 +61,14 @@ export async function relayArchive(
 		return unsupportedArchiveHost(host);
 	}
 	return upstream.relay(source, ARCHIVE_HEADERS);
+}
+
+function singleValue(
+	params: URLSearchParams,
+	name: string,
+): string | undefined {
+	const values = params.getAll(name);
+	return values.length === 1 ? values[0] : undefined;
 }
 
 function hostnameOf(url: string): string | undefined {
