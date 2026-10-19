@@ -47,7 +47,10 @@ export function cachingRelay(
 		if (source === null || !isCacheable(fetched.answer)) {
 			return answer(source, headers, "bypass");
 		}
-		const { body, copy } = keepingACopy(source, LARGEST_CACHED_BYTES);
+		const { body, copy } = keepingACopy(
+			source,
+			new BoundedCopy(LARGEST_CACHED_BYTES, declaredLength(fetched.answer)),
+		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return answer(body, headers, "miss");
 	};
@@ -71,7 +74,12 @@ function isCacheable(answer: Response): boolean {
 }
 
 function declaresMoreThan(answer: Response, limit: number): boolean {
-	return Number(answer.headers.get("Content-Length")) > limit;
+	return declaredLength(answer) > limit;
+}
+
+function declaredLength(answer: Response): number {
+	const length = Number(answer.headers.get("Content-Length"));
+	return Number.isSafeInteger(length) && length > 0 ? length : 0;
 }
 
 async function storeCopy(
@@ -100,10 +108,9 @@ async function ignoringCacheFailure<T>(
 
 function keepingACopy(
 	source: ReadableStream<Uint8Array>,
-	limit: number,
+	copy: BoundedCopy,
 ): CopiedStream {
 	const reader = source.getReader();
-	const copy = new BoundedCopy(limit);
 	const body = new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
@@ -129,40 +136,53 @@ function keepingACopy(
 }
 
 class BoundedCopy {
-	private chunks: Uint8Array[] | undefined = [];
+	private buffer: Uint8Array | undefined;
 	private size = 0;
 	private readonly finished = Promise.withResolvers<Uint8Array | undefined>();
 	readonly bytes = this.finished.promise;
 
-	constructor(private readonly limit: number) {}
+	constructor(
+		private readonly limit: number,
+		expectedSize: number,
+	) {
+		this.buffer = new Uint8Array(Math.min(expectedSize, limit));
+	}
 
 	keep(chunk: Uint8Array): void {
-		this.size += chunk.byteLength;
-		if (this.size > this.limit) {
+		if (this.buffer === undefined) {
+			return;
+		}
+		const size = this.size + chunk.byteLength;
+		if (size > this.limit) {
 			this.abandon();
 			return;
 		}
-		this.chunks?.push(chunk);
+		if (size > this.buffer.byteLength) {
+			this.buffer = grown(this.buffer, this.size, size, this.limit);
+		}
+		this.buffer.set(chunk, this.size);
+		this.size = size;
 	}
 
 	complete(): void {
-		this.finished.resolve(this.chunks && joined(this.chunks));
+		this.finished.resolve(this.buffer?.subarray(0, this.size));
 	}
 
 	abandon(): void {
-		this.chunks = undefined;
+		this.buffer = undefined;
 		this.finished.resolve(undefined);
 	}
 }
 
-function joined(chunks: Uint8Array[]): Uint8Array {
-	const bytes = new Uint8Array(
-		chunks.reduce((length, chunk) => length + chunk.byteLength, 0),
+function grown(
+	buffer: Uint8Array,
+	filled: number,
+	needed: number,
+	limit: number,
+): Uint8Array {
+	const larger = new Uint8Array(
+		Math.min(limit, Math.max(needed, buffer.byteLength * 2)),
 	);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return bytes;
+	larger.set(buffer.subarray(0, filled));
+	return larger;
 }
