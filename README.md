@@ -20,6 +20,15 @@ Cloudflare's free daily limit is reached.
 
 The routes, headers and error codes are described in [docs/contract.md](docs/contract.md).
 
+## Which archives it serves
+
+Only archives that Packagist lists for the named package, so the proxy cannot be used to fetch
+any other GitHub, Bitbucket or gitlab.com archive. Before fetching one, it reads the package's
+version metadata from Packagist and checks that the archive's URL is in it. That read is a
+subrequest the Worker makes, not a request to the Worker, so it costs nothing from the daily
+request budget. Each running copy of the Worker keeps the metadata in memory for 5 minutes, so the
+two archives of one comparison need one read.
+
 ## Run it locally
 
 You need [Bun](https://bun.sh) and Node.js 22 or newer (Wrangler and the test runner use Node).
