@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { proxyRequest, stubUpstream } from "./support/upstream";
+import { createProxy } from "../src/lib/proxy";
+import {
+	ALLOWED_ORIGIN,
+	PROXY,
+	proxyRequest,
+	stubUpstream,
+} from "./support/upstream";
 
 const P2_PATH = "/v1/composer/p2/monolog/monolog.json";
 const P2_UPSTREAM = "https://repo.packagist.org/p2/monolog/monolog.json";
@@ -155,5 +161,62 @@ describe("redirects from upstream servers", () => {
 		const response = await proxyRequest(upstream, P2_PATH);
 
 		expect(response.status).toBe(502);
+	});
+});
+
+describe("a slow upstream server", () => {
+	const TIMEOUT_MS = 20;
+
+	function proxyWithTimeout(upstream: ReturnType<typeof stubUpstream>) {
+		return createProxy({
+			fetch: upstream.fetch,
+			upstreamTimeoutMs: TIMEOUT_MS,
+		});
+	}
+
+	function p2Request(): Request {
+		return new Request(`${PROXY}${P2_PATH}`, {
+			headers: { Origin: ALLOWED_ORIGIN },
+		});
+	}
+
+	it("is given up on with 502 upstream_failed when it sends no headers in time", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: ({ signal }) =>
+				new Promise((_, reject) => {
+					signal?.addEventListener("abort", () => reject(signal.reason));
+				}),
+		});
+
+		const response = await proxyWithTimeout(upstream).fetch(p2Request());
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+		});
+	});
+
+	it("may take longer than the timeout to send the body once headers arrived", async () => {
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: ({ signal }) =>
+				new Response(
+					new ReadableStream({
+						async pull(controller) {
+							await scheduler.wait(TIMEOUT_MS * 3);
+							if (signal?.aborted) {
+								controller.error(signal.reason);
+								return;
+							}
+							controller.enqueue(new TextEncoder().encode("{}"));
+							controller.close();
+						},
+					}),
+				),
+		});
+
+		const response = await proxyWithTimeout(upstream).fetch(p2Request());
+
+		expect(await response.text()).toBe("{}");
 	});
 });

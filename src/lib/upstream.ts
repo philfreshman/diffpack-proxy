@@ -16,15 +16,19 @@ const UPSTREAM_HOSTS = new Set([
 	"bitbucket.org",
 	"gitlab.com",
 ]);
-const UPSTREAM_REQUEST: RequestInit = {
-	headers: { "User-Agent": "diffpack-proxy (+https://diffpack.io)" },
-	redirect: "manual",
-};
+const USER_AGENT = "diffpack-proxy (+https://diffpack.io)";
 
-export function createUpstream(fetch: UpstreamFetch) {
-	async function fetchOrUndefined(url: string): Promise<Response | undefined> {
+export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
+	async function fetchOrUndefined(
+		url: string,
+		signal: AbortSignal,
+	): Promise<Response | undefined> {
 		try {
-			return await fetch(url, UPSTREAM_REQUEST);
+			return await fetch(url, {
+				headers: { "User-Agent": USER_AGENT },
+				redirect: "manual",
+				signal,
+			});
 		} catch {
 			return undefined;
 		}
@@ -32,9 +36,10 @@ export function createUpstream(fetch: UpstreamFetch) {
 
 	async function fetchFollowingRedirects(
 		url: string,
+		signal: AbortSignal,
 		redirectsLeft = MAX_REDIRECTS,
 	): Promise<Response | undefined> {
-		const answer = await fetchOrUndefined(url);
+		const answer = await fetchOrUndefined(url, signal);
 		if (answer === undefined || redirectsLeft === 0) {
 			return answer;
 		}
@@ -43,12 +48,24 @@ export function createUpstream(fetch: UpstreamFetch) {
 			return answer;
 		}
 		await answer.body?.cancel();
-		return fetchFollowingRedirects(target, redirectsLeft - 1);
+		return fetchFollowingRedirects(target, signal, redirectsLeft - 1);
+	}
+
+	async function fetchHeadersInTime(
+		url: string,
+	): Promise<Response | undefined> {
+		const deadline = new AbortController();
+		const timer = setTimeout(() => deadline.abort(), timeoutMs);
+		try {
+			return await fetchFollowingRedirects(url, deadline.signal);
+		} finally {
+			clearTimeout(timer);
+		}
 	}
 
 	return {
 		async relay(url: string, headers: HeadersInit): Promise<Response> {
-			const answer = await fetchFollowingRedirects(url);
+			const answer = await fetchHeadersInTime(url);
 			if (answer === undefined) {
 				return upstreamFailed();
 			}

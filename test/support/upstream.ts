@@ -8,7 +8,10 @@ interface UpstreamCall {
 	init: RequestInit;
 }
 
-type UpstreamAnswers = Record<string, () => Response>;
+type UpstreamAnswers = Record<
+	string,
+	(init: RequestInit) => Response | Promise<Response>
+>;
 
 export function stubUpstream(answers: UpstreamAnswers = {}) {
 	const calls: UpstreamCall[] = [];
@@ -18,7 +21,7 @@ export function stubUpstream(answers: UpstreamAnswers = {}) {
 		if (answer === undefined) {
 			throw new TypeError("Network connection lost.");
 		}
-		return answer();
+		return answer(init);
 	}
 	return { fetch, calls };
 }

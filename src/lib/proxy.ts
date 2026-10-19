@@ -11,8 +11,11 @@ const PREFLIGHT_HEADERS = {
 	"Access-Control-Max-Age": "86400",
 };
 
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
+
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
+	upstreamTimeoutMs?: number;
 }
 
 interface Route {
@@ -20,8 +23,11 @@ interface Route {
 	answer(): Promise<Response>;
 }
 
-export function createProxy({ fetch }: ProxyDependencies) {
-	const upstream = createUpstream(fetch);
+export function createProxy({
+	fetch,
+	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
+}: ProxyDependencies) {
+	const upstream = createUpstream(fetch, upstreamTimeoutMs);
 
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
