@@ -66,14 +66,16 @@ without contacting upstream.
   says. Cloudflare may drop either earlier.
 - An answer is kept only once the client has received all of it, and only if it is 5 MB or
   smaller. One that declares a larger `Content-Length`, or passes 5 MB while streaming, is
-  streamed through without being kept. Errors and answers to `HEAD` are never kept.
+  streamed through without being kept. Errors, upstream answers with a status other than
+  `200` (such as a partial `206`) and answers to `HEAD` are never kept.
 - An answer from the cache goes through every other rule first: the origin check, the archive
   listing check and the daily quota. It counts against the budget like any other request.
 - On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
 
 Successful p2 and archive answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
 the cache, `miss` when it came from upstream and may be kept, and `bypass` when it came from
-upstream and will not be kept (on `*.workers.dev`, or when it declares more than 5 MB). An answer
+upstream and will not be kept (on `*.workers.dev`, when upstream answered with a status other
+than `200`, or when it declares more than 5 MB). An answer
 of unknown length says `miss` and is still not kept if it passes 5 MB. The header is for people
 checking the proxy with `curl` or the browser's developer tools; it is not in
 `Access-Control-Expose-Headers`, and clients must not depend on it.

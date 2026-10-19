@@ -185,6 +185,26 @@ describe("answers the edge cache does not keep", () => {
 		expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
 	});
 
+	it("leaves out a successful answer other than 200, such as a partial one", async () => {
+		let answers = 0;
+		const upstream = servingMonologZip(() => {
+			answers += 1;
+			return answers === 1
+				? new Response(ZIP_BYTES.slice(0, 2), { status: 206 })
+				: new Response(ZIP_BYTES);
+		});
+		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+		const partial = await get(ARCHIVE_PATH);
+		await downloaded(partial);
+		await get.settled();
+		const second = await get(ARCHIVE_PATH);
+
+		expect(partial.headers.get("Diffpack-Proxy-Cache")).toBe("bypass");
+		expect(await downloaded(second)).toEqual(ZIP_BYTES);
+		expect(codeloadCalls(upstream)).toHaveLength(2);
+	});
+
 	it("leaves out a HEAD request's answer and cancels its download", async () => {
 		const { upstream, download } = servingMonologZipUntilCancelled();
 		const edgeCache = await freshEdgeCache();

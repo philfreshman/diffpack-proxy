@@ -7,6 +7,7 @@ export type Relay = (
 ) => Promise<Response>;
 
 const LARGEST_CACHED_BYTES = 5 * 1024 * 1024;
+const CACHEABLE_STATUS = 200;
 const CACHE_OUTCOME_HEADER = "Diffpack-Proxy-Cache";
 
 type CacheOutcome = "hit" | "miss" | "bypass";
@@ -43,10 +44,7 @@ export function cachingRelay(
 			return fetched.failure;
 		}
 		const source = fetched.answer.body;
-		if (
-			source === null ||
-			declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)
-		) {
+		if (source === null || !isCacheable(fetched.answer)) {
 			return answer(source, headers, "bypass");
 		}
 		const { body, copy } = keepingACopy(source, LARGEST_CACHED_BYTES);
@@ -63,6 +61,13 @@ function answer(
 	return new Response(body, {
 		headers: { ...headers, [CACHE_OUTCOME_HEADER]: outcome },
 	});
+}
+
+function isCacheable(answer: Response): boolean {
+	return (
+		answer.status === CACHEABLE_STATUS &&
+		!declaresMoreThan(answer, LARGEST_CACHED_BYTES)
+	);
 }
 
 function declaresMoreThan(answer: Response, limit: number): boolean {
