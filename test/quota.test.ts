@@ -290,7 +290,7 @@ describe("the quota_exhausted answer", () => {
 		expect(await response.json()).toEqual({
 			error: "quota_exhausted",
 			message:
-				"diffpack's Composer proxy has used today's free allowance. It resets at 00:00 UTC.",
+				"diffpack's package proxy has used today's free allowance. It resets at 00:00 UTC.",
 			resetsAt: "2026-10-20T00:00:00Z",
 		});
 	});
