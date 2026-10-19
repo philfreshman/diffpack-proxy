@@ -1,7 +1,7 @@
+import type { Relay } from "./edge-cache";
 import { errorResponse } from "./errors";
 import type { ArchiveListing } from "./listing";
 import { invalidPackageName, isComposerPackageName } from "./package-name";
-import type { Upstream } from "./upstream";
 
 export const ARCHIVE_PATH = "/v1/composer/archive";
 const ARCHIVE_HEADERS = {
@@ -56,7 +56,7 @@ interface ArchiveRequest {
 }
 
 export async function relayArchive(
-	upstream: Upstream,
+	relay: Relay,
 	listing: ArchiveListing,
 	params: URLSearchParams,
 ): Promise<Response> {
@@ -70,11 +70,7 @@ export async function relayArchive(
 	);
 	return (
 		refusal ??
-		upstream.relay(
-			request.source.url,
-			ARCHIVE_HEADERS,
-			request.source.githubApiUrl,
-		)
+		relay(request.source.url, ARCHIVE_HEADERS, request.source.githubApiUrl)
 	);
 }
 

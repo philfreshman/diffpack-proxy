@@ -110,6 +110,8 @@ export function createUpstream(
 	}
 
 	return {
+		fetchSuccess,
+
 		async relay(
 			url: string,
 			headers: HeadersInit,
