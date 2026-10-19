@@ -101,15 +101,16 @@ export function createProxy({
 		if (bypassesQuotaGuard(url)) {
 			return answer(request, url, origin);
 		}
+		const now = clock();
 		const [ticket, response] = await Promise.all([
-			dailyQuota.take(clock()),
+			dailyQuota.take(now),
 			answer(request, url, origin),
 		]);
 		if (ticket.allowed) {
 			return response;
 		}
 		await response.body?.cancel();
-		return quotaExhausted(ticket.resetsAt);
+		return quotaExhausted(ticket.resetsAt, now);
 	}
 
 	return {

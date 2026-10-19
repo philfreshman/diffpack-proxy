@@ -77,6 +77,48 @@ describe("the daily quota", () => {
 	});
 });
 
+describe("the quota_exhausted answer", () => {
+	it("says when the quota resets, in the body and in Retry-After", async () => {
+		const proxy = proxyAt("2026-10-19T23:59:30Z");
+
+		await useUpTheDay(proxy);
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get("Retry-After")).toBe("30");
+		expect(await response.json()).toEqual({
+			error: "quota_exhausted",
+			message:
+				"diffpack's Composer proxy has used today's free allowance. It resets at 00:00 UTC.",
+			resetsAt: "2026-10-20T00:00:00Z",
+		});
+	});
+
+	it("rounds Retry-After up to a whole second", async () => {
+		const proxy = proxyAt("2026-10-19T23:59:59.250Z");
+
+		await useUpTheDay(proxy);
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.headers.get("Retry-After")).toBe("1");
+	});
+
+	it("carries the CORS headers, so the browser can read it", async () => {
+		const proxy = proxyAt(NOON);
+
+		await useUpTheDay(proxy);
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+			ALLOWED_ORIGIN,
+		);
+		expect(response.headers.get("Vary")).toBe("Origin");
+		expect(response.headers.get("Access-Control-Expose-Headers")).toBe(
+			"Retry-After, Diffpack-Proxy-Error",
+		);
+	});
+});
+
 describe("GET /v1/status", () => {
 	it("reports the open day's count, budget and reset time", async () => {
 		const response = await send(proxyAt(NOON), STATUS_PATH);
