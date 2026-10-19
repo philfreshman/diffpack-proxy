@@ -6,6 +6,8 @@ export type Relay = (
 	githubApiUrl?: string,
 ) => Promise<Response>;
 
+const LARGEST_CACHED_BYTES = 5 * 1024 * 1024;
+
 export type BackgroundWork = Pick<ExecutionContext, "waitUntil">;
 
 interface CopiedStream {
@@ -27,10 +29,17 @@ export function cachingRelay(
 		if ("failure" in fetched) {
 			return fetched.failure;
 		}
+		if (declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)) {
+			return new Response(fetched.answer.body, { headers });
+		}
 		const { body, copy } = keepingACopy(fetched.answer.body);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return new Response(body, { headers });
 	};
+}
+
+function declaresMoreThan(answer: Response, limit: number): boolean {
+	return Number(answer.headers.get("Content-Length")) > limit;
 }
 
 async function storeCopy(

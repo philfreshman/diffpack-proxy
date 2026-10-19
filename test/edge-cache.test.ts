@@ -16,11 +16,15 @@ function freshEdgeCache(): Promise<Cache> {
 	return caches.open(`edge-cache-${crypto.randomUUID()}`);
 }
 
-function servingMonologZip() {
+const LARGEST_CACHED_ARCHIVE_BYTES = 5 * 1024 * 1024;
+
+function servingMonologZip(
+	zip: () => Response = () => new Response(ZIP_BYTES),
+) {
 	return stubUpstream({
 		[p2UpstreamUrl("monolog/monolog")]: () =>
 			new Response(p2Listing("monolog/monolog", [GITHUB_DIST])),
-		[CODELOAD]: () => new Response(ZIP_BYTES),
+		[CODELOAD]: zip,
 	});
 }
 
@@ -99,6 +103,27 @@ describe("the edge cache on a custom domain", () => {
 		expect(await downloaded(second)).toEqual(ZIP_BYTES);
 		expect(second.headers.get("Content-Type")).toBe("application/zip");
 		expect(codeloadCalls(upstream)).toHaveLength(1);
+	});
+});
+
+describe("a large archive on a custom domain", () => {
+	it("streams straight through without a copy when it declares more than 5 MB", async () => {
+		const upstream = servingMonologZip(
+			() =>
+				new Response(ZIP_BYTES, {
+					headers: {
+						"Content-Length": String(LARGEST_CACHED_ARCHIVE_BYTES + 1),
+					},
+				}),
+		);
+		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+		await downloaded(await get(ARCHIVE_PATH));
+		await get.settled();
+		await downloaded(await get(ARCHIVE_PATH));
+
+		expect(codeloadCalls(upstream)).toHaveLength(2);
+		expect(get.backgroundTasks).toEqual([]);
 	});
 });
 
