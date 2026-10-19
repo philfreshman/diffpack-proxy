@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
-import { proxyRequest, stubUpstream } from "./support/upstream";
+import { proxyFor, proxyRequest, stubUpstream } from "./support/upstream";
 
 const MONOLOG = "monolog/monolog";
 const LISTED_SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
@@ -124,6 +124,29 @@ describe("an archive url that the metadata holds only inside a longer string", (
 
 		expect(response.status).toBe(403);
 		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"archive_not_listed",
+		);
+	});
+});
+
+describe("an archive url found listed under one package", () => {
+	it("is refused when the same isolate is asked for it under another package", async () => {
+		const upstream = stubUpstream({
+			[p2UpstreamUrl(MONOLOG)]: () =>
+				new Response(p2Listing(MONOLOG, [LISTED_DIST])),
+			[p2UpstreamUrl("psr/log")]: () => new Response(p2Listing("psr/log", [])),
+			[LISTED_CODELOAD]: () => new Response("zip"),
+		});
+		const request = proxyFor(upstream);
+
+		const listed = await request(archivePath(MONOLOG, LISTED_DIST));
+		const underAnotherPackage = await request(
+			archivePath("psr/log", LISTED_DIST),
+		);
+
+		expect(listed.status).toBe(200);
+		expect(underAnotherPackage.status).toBe(403);
+		expect(underAnotherPackage.headers.get("Diffpack-Proxy-Error")).toBe(
 			"archive_not_listed",
 		);
 	});
