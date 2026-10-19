@@ -5,6 +5,10 @@ import { createUpstream, type UpstreamFetch } from "./upstream";
 
 const HEALTH_PATH = "/v1/health";
 const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
+const PREFLIGHT_HEADERS = {
+	"Access-Control-Allow-Methods": "GET, HEAD",
+	"Access-Control-Max-Age": "86400",
+};
 
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
@@ -43,19 +47,35 @@ export function createProxy({ fetch }: ProxyDependencies) {
 		if (!originPermits(origin, route)) {
 			return originNotAllowed();
 		}
+		if (request.method === "OPTIONS") {
+			return preflight();
+		}
 		return route.answer();
 	}
 
 	return {
 		async fetch(request: Request): Promise<Response> {
 			const origin = request.headers.get("Origin");
-			return withCorsHeadersFor(origin, await answer(request, origin));
+			const response = withCorsHeadersFor(
+				origin,
+				await answer(request, origin),
+			);
+			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
 	} satisfies ExportedHandler;
 }
 
+async function withoutBody(response: Response): Promise<Response> {
+	await response.body?.cancel();
+	return new Response(null, response);
+}
+
 function originPermits(origin: string | null, route: Route): boolean {
 	return origin === null ? route.answersWithoutOrigin : isAllowedOrigin(origin);
+}
+
+function preflight(): Response {
+	return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
 }
 
 function health(): Response {
