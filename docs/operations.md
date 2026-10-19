@@ -87,7 +87,7 @@ resets at 00:00 UTC; none is monthly.
 | :- | :- | :- |
 | Worker requests | 100,000 a day, per account | The proxy's own budget stops at `DAILY_REQUEST_BUDGET` (90,000). |
 | CPU time | 10 ms per request | The proxy streams bytes and never unpacks them, so time spent waiting on Packagist or GitHub does not count. |
-| Subrequests | 50 per request | The archive route makes at most 12: the Packagist read, the archive and, with `GITHUB_TOKEN` set, one GitHub API retry, each with up to 3 redirects. |
+| Subrequests | 50 per request, Cache API calls included | The archive route makes at most 14: the Packagist read, the archive and, with `GITHUB_TOKEN` set, one GitHub API retry, each with up to 3 redirects, plus one cache lookup and one cache write on a custom domain. |
 | Durable Object requests | 100,000 a day | One counter call per counted request, see "The daily quota counter". |
 | Durable Object duration | 13,000 GB-s a day | About 10,800 GB-s even if the counter never sleeps. |
 | Durable Object SQLite rows | 5 million read and 100,000 written a day, 5 GB stored | One row, written once per counted request. |
@@ -109,6 +109,9 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
   over its daily limit. This only happens if the requests that arrive after the budget is spent,
   plus the uncounted `/v1/health` checks and `OPTIONS` preflights, add up to more than the 10,000
   of headroom, or if another Worker in the same account uses the account's requests.
+- **One address sends too many requests, once the per-IP rate rule exists.** Cloudflare blocks it
+  for 10 seconds with its own answer, before the Worker runs (see "Per-IP rate rule"). That
+  answer has no CORS header either, so the app reports `proxy_unreachable` for those seconds.
 - **A request goes over 10 ms of CPU.** Cloudflare ends it with its own error page, which the
   browser also sees as a network failure. The proxy's work per request is far below this.
 
@@ -209,6 +212,101 @@ keep it, because secrets are not part of `wrangler.jsonc`. To rotate it, run the
 with a new token. To turn the fallback off, run `bunx wrangler secret delete GITHUB_TOKEN`.
 
 For `bun run dev`, put `GITHUB_TOKEN=<token>` in `.dev.vars`, which git ignores.
+
+## Edge cache
+
+The proxy keeps successful p2 and archive answers in Cloudflare's cache, as described under "Edge
+cache" in `docs/contract.md`. It only does so on a custom domain: on `workers.dev`, where it runs
+today, Cloudflare's cache does nothing, so the proxy does not use it and every answer says
+`Diffpack-Proxy-Cache: bypass`. The code is in place and turns itself on once decision D2 in the
+PHP plan moves the proxy to a custom domain such as `proxy.diffpack.io`.
+
+What it buys, and what it does not:
+
+- **It saves upstream load and time, not quota.** An answer from the cache still runs the Worker,
+  so it still counts as one of Cloudflare's 100,000 requests a day and one count against
+  `DAILY_REQUEST_BUDGET`. It saves the trip to GitHub or Packagist, and with it time and the risk
+  of GitHub throttling `codeload`. The Packagist listing check still runs before a cached archive
+  is served, from the Worker's in-memory copy when it has one.
+- **Expect modest hit rates.** The cache belongs to one data centre and is not shared with
+  others, so only readers near each other who compare the same versions share entries. Popular
+  packages benefit the most.
+- **Archives up to 5 MB only.** While an answer streams to the client, the proxy keeps a copy and
+  stores it when the client has received all of it. To bound memory in an isolate (128 MB), it
+  keeps no copy of an answer that declares more than 5 MB and drops the copy of one that passes
+  5 MB while streaming. That covers well over 90% of Composer archives; larger ones, such as
+  `symfony/symfony`, stream through as before. A refused or abandoned request stores nothing.
+- **Entries.** They are keyed by the upstream URL (`https://codeload.github.com/…`,
+  `https://repo.packagist.org/p2/…`). Archive URLs contain a commit SHA, so their content never
+  changes; p2 files expire after 5 minutes. If an entry ever has to go, **Caching > Configuration
+  > Purge Everything** on the zone removes all of them; a purge by URL does not work for them.
+
+To check it by hand once the custom domain exists (pending until D2), request the same archive
+twice from one machine, then the largest archive once:
+
+```bash
+ORIGIN=https://proxy.diffpack.io
+ARCHIVE="$ORIGIN/v1/composer/archive?package=monolog/monolog&url=https%3A%2F%2Fapi.github.com%2Frepos%2FSeldaek%2Fmonolog%2Fzipball%2Fd7059e4c691d05ea1222b5124bed0f961be46e15"
+curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i diffpack-proxy-cache
+curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i diffpack-proxy-cache
+```
+
+The first prints `miss` and the second `hit`. Then do the same for `symfony/symfony`, the largest
+archive (about 16 MB), with a current dist URL from
+`https://repo.packagist.org/p2/symfony/symfony.json`. It must arrive whole both times and never
+answer `hit`. GitHub builds a fresh archive without a `Content-Length`, so the first answer may
+say `miss` and is then dropped once it passes 5 MB; once GitHub has it ready it declares its
+length and the answer says `bypass`. Each request costs one count from the budget.
+`bun run dev` uses a local cache that behaves the same way, so this can be tried locally first.
+
+## Per-IP rate rule
+
+The daily budget is shared by everyone, so one client sending requests in a loop can use it up.
+One Cloudflare WAF rate-limiting rule slows such a client down. The free plan includes one rule,
+but it only applies to a zone on Cloudflare, so this too waits for decision D2. It is dashboard
+configuration, not code. Status: documented, not yet created, hand test pending until the custom
+domain exists.
+
+Once the zone is on Cloudflare, open it and go to **Security > WAF > Rate limiting rules >
+Create rule**, then set:
+
+| Setting | Value |
+| :- | :- |
+| Rule name | `diffpack-proxy per-IP limit` |
+| If incoming requests match | **URI Path** **starts with** `/v1/`, which is the expression `(starts_with(http.request.uri.path, "/v1/"))` |
+| With the same characteristics | **IP** (the only choice on the free plan) |
+| When rate exceeds | **60** requests per **10 seconds** |
+| Then take action | **Block** |
+| For duration | **10 seconds** (the only choice on the free plan) |
+
+Then select **Deploy**.
+
+- **Why these numbers.** One comparison in the app costs about three proxy requests: one p2 read
+  and two archives. A person stays far below 60 in 10 seconds, even switching versions quickly.
+  The free plan only counts over 10 seconds and only blocks for 10 seconds.
+- **What it does not do.** It caps one address at 6 requests a second, so one client needs over
+  4 hours instead of minutes to use up 90,000. That buys time to notice in the dashboard; it does
+  not stop a client that keeps going or uses many addresses. Many readers behind one address, such
+  as an office network, share the limit, which is why it is generous.
+- **The rule matches paths only.** The free plan cannot match a host name, so the rule covers
+  every proxied host in the zone. diffpack's own pages do not start with `/v1/`. If another
+  proxied host in the zone ever does, it is limited too.
+- **A blocked request never reaches the Worker**, so it costs no Worker request and no count
+  from the budget. Cloudflare answers it with its own `429` page, which has no CORS header, so in
+  the browser `fetch` fails like being offline and the app reports `proxy_unreachable` until the
+  10 seconds are over. `/v1/health` checks from outside are limited like everything else.
+
+To test it by hand once (pending until D2), send more than 60 requests within 10 seconds from one
+machine and look at the status codes:
+
+```bash
+for request in $(seq 1 70); do
+  curl -s -o /dev/null -w '%{http_code}\n' https://proxy.diffpack.io/v1/health
+done | sort | uniq -c
+```
+
+Expect about 60 `200` answers and the rest `429`, and a `200` again after 10 seconds. The
+`/v1/health` path costs nothing from the budget. The blocks show under **Security > Events**.
 
 ## The daily quota counter
 

@@ -1,5 +1,11 @@
 import { ARCHIVE_PATH, relayArchive } from "./archive";
 import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
+import {
+	type BackgroundWork,
+	bypassingRelay,
+	cachingRelay,
+	type Relay,
+} from "./edge-cache";
 import { errorResponse } from "./errors";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
@@ -17,6 +23,7 @@ const PREFLIGHT_HEADERS = {
 };
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
+const HOSTS_WITHOUT_EDGE_CACHE = ".workers.dev";
 
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
@@ -24,6 +31,7 @@ interface ProxyDependencies {
 	upstreamTimeoutMs?: number;
 	now?: Clock;
 	githubToken?: string | undefined;
+	edgeCache?: Cache | undefined;
 }
 
 type QuotaRule = "counted" | "exempt" | "countsItself";
@@ -40,6 +48,7 @@ export function createProxy({
 	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
 	now = Date.now,
 	githubToken,
+	edgeCache,
 }: ProxyDependencies) {
 	const upstream = createUpstream(fetch, upstreamTimeoutMs, githubToken);
 	const listing = createArchiveListing(upstream, now);
@@ -49,7 +58,21 @@ export function createProxy({
 		return new Date(now());
 	}
 
-	function routeFor({ pathname, searchParams }: URL): Route {
+	function relayFor(
+		request: Request,
+		context: BackgroundWork | undefined,
+	): Relay {
+		if (
+			edgeCache === undefined ||
+			context === undefined ||
+			!hasEdgeCache(request)
+		) {
+			return bypassingRelay(upstream);
+		}
+		return cachingRelay(upstream, edgeCache, context);
+	}
+
+	function routeFor({ pathname, searchParams }: URL, relay: Relay): Route {
 		if (pathname === HEALTH_PATH) {
 			return {
 				answersWithoutOrigin: true,
@@ -69,14 +92,14 @@ export function createProxy({
 			return {
 				answersWithoutOrigin: false,
 				quota: "counted",
-				answer: () => relayP2(upstream, p2Name),
+				answer: () => relayP2(relay, p2Name),
 			};
 		}
 		if (pathname === ARCHIVE_PATH) {
 			return {
 				answersWithoutOrigin: false,
 				quota: "counted",
-				answer: () => relayArchive(upstream, listing, searchParams),
+				answer: () => relayArchive(relay, listing, searchParams),
 			};
 		}
 		return {
@@ -104,8 +127,9 @@ export function createProxy({
 	async function answerWithinQuota(
 		request: Request,
 		origin: string | null,
+		relay: Relay,
 	): Promise<Response> {
-		const route = routeFor(new URL(request.url));
+		const route = routeFor(new URL(request.url), relay);
 		if (isExemptFromQuota(request, route)) {
 			return answer(request, route, origin);
 		}
@@ -118,11 +142,15 @@ export function createProxy({
 	}
 
 	return {
-		async fetch(request: Request): Promise<Response> {
+		async fetch(
+			request: Request,
+			_env?: unknown,
+			context?: BackgroundWork,
+		): Promise<Response> {
 			const origin = request.headers.get("Origin");
 			const response = withCorsHeadersFor(
 				origin,
-				await answerWithinQuota(request, origin),
+				await answerWithinQuota(request, origin, relayFor(request, context)),
 			);
 			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
@@ -132,6 +160,10 @@ export function createProxy({
 async function withoutBody(response: Response): Promise<Response> {
 	await response.body?.cancel();
 	return new Response(null, response);
+}
+
+function hasEdgeCache(request: Request): boolean {
+	return !new URL(request.url).hostname.endsWith(HOSTS_WITHOUT_EDGE_CACHE);
 }
 
 function isExemptFromQuota({ method }: Request, route: Route): boolean {

@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { createProxy } from "../../src/lib/proxy";
 import type { QuotaCounter } from "../../src/lib/quota";
 import { freshDailyQuota } from "./quota";
@@ -44,6 +45,8 @@ interface ProxyRequestInit extends RequestInit {
 
 interface TestProxyOptions {
 	now?: () => number;
+	edgeCache?: Cache | undefined;
+	proxyOrigin?: string;
 	dailyQuota?: QuotaCounter | undefined;
 	githubToken?: string | undefined;
 	upstreamTimeoutMs?: number | undefined;
@@ -56,6 +59,8 @@ export function proxyFor(
 		dailyQuota = freshDailyQuota(),
 		githubToken,
 		upstreamTimeoutMs,
+		edgeCache,
+		proxyOrigin = PROXY,
 	}: TestProxyOptions = {},
 ) {
 	const proxy = createProxy({
@@ -63,9 +68,11 @@ export function proxyFor(
 		dailyQuota,
 		now,
 		githubToken,
+		edgeCache,
 		...(upstreamTimeoutMs === undefined ? {} : { upstreamTimeoutMs }),
 	});
-	return (
+	const context = recordingContext();
+	const send = (
 		path: string,
 		{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},
 	): Promise<Response> => {
@@ -73,7 +80,25 @@ export function proxyFor(
 		if (origin !== null) {
 			headers.set("Origin", origin);
 		}
-		return proxy.fetch(new Request(`${PROXY}${path}`, { ...init, headers }));
+		return proxy.fetch(
+			new Request(`${proxyOrigin}${path}`, { ...init, headers }),
+			env,
+			context,
+		);
+	};
+	return Object.assign(send, {
+		backgroundTasks: context.tasks,
+		settled: () => Promise.all(context.tasks),
+	});
+}
+
+function recordingContext() {
+	const tasks: Promise<unknown>[] = [];
+	return {
+		tasks,
+		waitUntil(task: Promise<unknown>) {
+			tasks.push(task);
+		},
 	};
 }
 

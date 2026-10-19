@@ -67,6 +67,7 @@ describe("requests to upstream servers", () => {
 			"access-control-expose-headers",
 			"cache-control",
 			"content-type",
+			"diffpack-proxy-cache",
 			"vary",
 		]);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
