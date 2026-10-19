@@ -32,7 +32,10 @@ export function cachingRelay(
 		if (declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)) {
 			return new Response(fetched.answer.body, { headers });
 		}
-		const { body, copy } = keepingACopy(fetched.answer.body);
+		const { body, copy } = keepingACopy(
+			fetched.answer.body,
+			LARGEST_CACHED_BYTES,
+		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
 		return new Response(body, { headers });
 	};
@@ -54,34 +57,61 @@ async function storeCopy(
 	}
 }
 
-function keepingACopy(source: ReadableStream<Uint8Array> | null): CopiedStream {
+function keepingACopy(
+	source: ReadableStream<Uint8Array> | null,
+	limit: number,
+): CopiedStream {
 	const reader = (source ?? new ReadableStream()).getReader();
-	const chunks: Uint8Array[] = [];
-	const { promise: copy, resolve: finish } = Promise.withResolvers<
-		Uint8Array | undefined
-	>();
+	const copy = new BoundedCopy(limit);
 	const body = new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
 				const { done, value } = await reader.read();
 				if (done) {
 					controller.close();
-					finish(joined(chunks));
+					copy.complete();
 					return;
 				}
-				chunks.push(value);
+				copy.keep(value);
 				controller.enqueue(value);
 			} catch (error) {
-				finish(undefined);
+				copy.abandon();
 				controller.error(error);
 			}
 		},
 		async cancel(reason) {
-			finish(undefined);
+			copy.abandon();
 			await reader.cancel(reason);
 		},
 	});
-	return { body, copy };
+	return { body, copy: copy.bytes };
+}
+
+class BoundedCopy {
+	private chunks: Uint8Array[] | undefined = [];
+	private size = 0;
+	private readonly finished = Promise.withResolvers<Uint8Array | undefined>();
+	readonly bytes = this.finished.promise;
+
+	constructor(private readonly limit: number) {}
+
+	keep(chunk: Uint8Array): void {
+		this.size += chunk.byteLength;
+		if (this.size > this.limit) {
+			this.abandon();
+			return;
+		}
+		this.chunks?.push(chunk);
+	}
+
+	complete(): void {
+		this.finished.resolve(this.chunks && joined(this.chunks));
+	}
+
+	abandon(): void {
+		this.chunks = undefined;
+		this.finished.resolve(undefined);
+	}
 }
 
 function joined(chunks: Uint8Array[]): Uint8Array {

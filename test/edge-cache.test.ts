@@ -127,6 +127,35 @@ describe("a large archive on a custom domain", () => {
 	});
 });
 
+describe("an answer of unknown length on a custom domain", () => {
+	it("drops its copy once it passes 5 MB and still streams all of it", async () => {
+		const megabyte = new Uint8Array(1024 * 1024).fill(0x5a);
+		const megabytesSent = 6;
+		const upstream = servingMonologZip(() => {
+			let sent = 0;
+			return new Response(
+				new ReadableStream({
+					pull(controller) {
+						controller.enqueue(megabyte);
+						sent += 1;
+						if (sent === megabytesSent) {
+							controller.close();
+						}
+					},
+				}),
+			);
+		});
+		const get = proxyFor(upstream, { edgeCache: await freshEdgeCache() });
+
+		const first = await downloaded(await get(ARCHIVE_PATH));
+		await get.settled();
+		await downloaded(await get(ARCHIVE_PATH));
+
+		expect(first.byteLength).toBe(megabytesSent * megabyte.byteLength);
+		expect(codeloadCalls(upstream)).toHaveLength(2);
+	});
+});
+
 describe("an archive the counter refuses on a custom domain", () => {
 	it("cancels the download and leaves nothing in the edge cache", async () => {
 		const { upstream, download } = servingMonologZipUntilCancelled();
