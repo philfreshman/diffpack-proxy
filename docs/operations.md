@@ -21,7 +21,10 @@ Renovate's automerges, and can be started by hand from the Actions tab (it deplo
    new `workers.dev` address can take a moment to answer.
 5. `scripts/smoke.sh` against that address. The address is also written to the run's summary.
 
-Deploys never overlap: a second push waits until the running deploy has finished.
+Deploys never overlap: a second push waits until the running deploy has finished. If more pushes
+arrive while one waits, GitHub cancels the waiting run and keeps only the newest, which contains
+the others' changes. A run started by hand on another branch only runs the checks, and it never
+replaces a waiting deploy of `main`.
 
 ## First deploy
 
