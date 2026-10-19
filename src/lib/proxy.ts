@@ -92,7 +92,7 @@ export function createProxy({
 		origin: string | null,
 	): Promise<Response> {
 		const url = new URL(request.url);
-		if (bypassesQuotaGuard(url)) {
+		if (bypassesQuotaGuard(request, url)) {
 			return answer(request, url, origin);
 		}
 		return quotaGuard.admit(clock(), () => answer(request, url, origin));
@@ -115,8 +115,8 @@ async function withoutBody(response: Response): Promise<Response> {
 	return new Response(null, response);
 }
 
-function bypassesQuotaGuard({ pathname }: URL): boolean {
-	return PATHS_OUTSIDE_QUOTA_GUARD.has(pathname);
+function bypassesQuotaGuard({ method }: Request, { pathname }: URL): boolean {
+	return method === "OPTIONS" || PATHS_OUTSIDE_QUOTA_GUARD.has(pathname);
 }
 
 function originPermits(origin: string | null, route: Route): boolean {

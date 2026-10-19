@@ -267,6 +267,7 @@ describe("requests outside the quota", () => {
 	it.each([
 		["GET /v1/health", "/v1/health", "GET"],
 		["POST /v1/health", "/v1/health", "POST"],
+		["an OPTIONS preflight", P2_PATH, "OPTIONS"],
 	])("include %s", async (_, path, method) => {
 		const proxy = proxyAt(NOON);
 
