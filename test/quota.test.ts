@@ -138,6 +138,43 @@ describe("a proxy that saw the day used up", () => {
 	});
 });
 
+describe("a counter that cannot be reached", () => {
+	const unreachableQuota: QuotaCounter = {
+		take: () => Promise.reject(new Error("Exceeded allowed rows written.")),
+	};
+
+	it("fails closed until the next 00:00 UTC", async () => {
+		const proxy = proxyAt("2026-10-19T23:00:00Z", {
+			dailyQuota: unreachableQuota,
+		});
+
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get("Retry-After")).toBe("3600");
+		expect(await response.json()).toMatchObject({
+			error: "quota_exhausted",
+			resetsAt: "2026-10-20T00:00:00Z",
+		});
+	});
+
+	it("is not asked again before the next 00:00 UTC", async () => {
+		const clock = settableClock("2026-10-19T23:00:00Z");
+		const dailyQuota = countingTakes(unreachableQuota);
+		const proxy = proxyAt(clock, { dailyQuota });
+		await send(proxy, P2_PATH);
+
+		await send(proxy, P2_PATH);
+		clock.setTo("2026-10-20T00:00:00Z");
+		await send(proxy, P2_PATH);
+
+		expect(dailyQuota.takes).toEqual([
+			new Date("2026-10-19T23:00:00Z"),
+			new Date("2026-10-20T00:00:00Z"),
+		]);
+	});
+});
+
 describe("the quota_exhausted answer", () => {
 	it("says when the quota resets, in the body and in Retry-After", async () => {
 		const proxy = proxyAt("2026-10-19T23:59:30Z");
