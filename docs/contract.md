@@ -139,7 +139,7 @@ upstream one.
 | 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds (the GitHub API retry gets its own 25 seconds), could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
 | 503 | `quota_exhausted` | today's budget is used up, or the quota counter cannot be reached (see "Daily quota") | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |
 
-The `quota_exhausted` message reads: "diffpack's Composer proxy has used today's free allowance.
+The `quota_exhausted` message reads: "diffpack's package proxy has used today's free allowance.
 It resets at 00:00 UTC."
 
 ## When the proxy cannot answer at all

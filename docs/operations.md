@@ -100,7 +100,7 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 
 - **The proxy's budget is used up.** Every counted request answers `503 quota_exhausted` with
   `resetsAt` and `Retry-After`, and `/v1/status` reports `open: false`. The app can read this
-  answer and show its message, "diffpack's Composer proxy has used today's free allowance. It
+  answer and show its message, "diffpack's package proxy has used today's free allowance. It
   resets at 00:00 UTC." Other registries keep working, since they do not use the proxy. Go keeps working for a full module path, which the app reads from `proxy.golang.org`; only searching Go modules by keyword stops. This is the normal way a busy day ends.
 - **The counter's own Durable Object limits are used up, or it cannot be reached.** The proxy
   fails closed with the same `503 quota_exhausted` answer.

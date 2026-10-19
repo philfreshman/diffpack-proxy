@@ -17,7 +17,7 @@ export interface QuotaCounter {
 export function quotaExhausted(resetsAt: Date, now: Date): Response {
 	const response = errorResponse(
 		"quota_exhausted",
-		"diffpack's Composer proxy has used today's free allowance. It resets at 00:00 UTC.",
+		"diffpack's package proxy has used today's free allowance. It resets at 00:00 UTC.",
 		{ resetsAt: isoTimestamp(resetsAt) },
 	);
 	response.headers.set("Retry-After", String(secondsBetween(now, resetsAt)));
