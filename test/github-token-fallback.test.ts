@@ -132,6 +132,50 @@ describe("a GitHub archive that codeload throttles", () => {
 		]);
 	});
 
+	it("cancels the throttled codeload body before retrying", async () => {
+		let cancelled = false;
+		const throttledStream: Answer = () =>
+			new Response(
+				new ReadableStream({
+					cancel() {
+						cancelled = true;
+					},
+				}),
+				{ status: 429 },
+			);
+		const upstream = githubServing(
+			firstThen(throttledStream, zip),
+			redirectTo(CODELOAD),
+		);
+
+		await proxyRequest(upstream, ARCHIVE_PATH, { githubToken: GITHUB_TOKEN });
+
+		expect(cancelled).toBe(true);
+	});
+
+	it("answers 502 upstream_failed without a status when the API sends no headers in time", async () => {
+		const upstream = stubUpstream({
+			[p2UpstreamUrl("monolog/monolog")]: () =>
+				new Response(p2Listing("monolog/monolog", [GITHUB_DIST])),
+			[CODELOAD]: status(429),
+			[GITHUB_DIST]: ({ signal }) =>
+				new Promise((_, reject) => {
+					signal?.addEventListener("abort", () => reject(signal.reason));
+				}),
+		});
+
+		const response = await proxyRequest(upstream, ARCHIVE_PATH, {
+			githubToken: GITHUB_TOKEN,
+			upstreamTimeoutMs: 20,
+		});
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+		});
+	});
+
 	it("answers with the API's failure and never with the token", async () => {
 		const upstream = githubServing(status(429), status(401));
 
@@ -151,6 +195,55 @@ describe("a GitHub archive that codeload throttles", () => {
 			GITHUB_TOKEN,
 		);
 		expect(upstream.calls).toHaveLength(3);
+	});
+});
+
+describe("redirects from the GitHub API", () => {
+	it.each([
+		["another host", "https://evil.example/zip"],
+		[
+			"plain http",
+			`http://codeload.github.com/Seldaek/monolog/legacy.zip/${SHA}`,
+		],
+	])("to %s are refused without fetching it", async (_, location) => {
+		const upstream = githubServing(status(429), redirectTo(location));
+
+		const response = await proxyRequest(upstream, ARCHIVE_PATH, {
+			githubToken: GITHUB_TOKEN,
+		});
+
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({
+			error: "upstream_failed",
+			message: expect.any(String),
+			upstreamStatus: 302,
+		});
+		expect(upstream.calls.map((call) => call.url)).not.toContain(location);
+	});
+
+	it("are refused after three, and no hop gets the token", async () => {
+		const hop = (n: number) => `${CODELOAD}?hop=${n}`;
+		const upstream = stubUpstream({
+			[p2UpstreamUrl("monolog/monolog")]: () =>
+				new Response(p2Listing("monolog/monolog", [GITHUB_DIST])),
+			[CODELOAD]: status(429),
+			[GITHUB_DIST]: redirectTo(hop(1)),
+			[hop(1)]: redirectTo(hop(2)),
+			[hop(2)]: redirectTo(hop(3)),
+			[hop(3)]: redirectTo(hop(4)),
+			[hop(4)]: zip,
+		});
+
+		const response = await proxyRequest(upstream, ARCHIVE_PATH, {
+			githubToken: GITHUB_TOKEN,
+		});
+
+		expect(response.status).toBe(502);
+		const hops = upstream.calls.slice(3);
+		expect(hops.map((call) => call.url)).toEqual([hop(1), hop(2), hop(3)]);
+		for (const call of hops) {
+			expect(headersOf(call)).not.toHaveProperty("authorization");
+		}
 	});
 });
 

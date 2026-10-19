@@ -46,6 +46,7 @@ interface TestProxyOptions {
 	now?: () => number;
 	dailyQuota?: QuotaCounter | undefined;
 	githubToken?: string | undefined;
+	upstreamTimeoutMs?: number | undefined;
 }
 
 export function proxyFor(
@@ -54,6 +55,7 @@ export function proxyFor(
 		now = Date.now,
 		dailyQuota = freshDailyQuota(),
 		githubToken,
+		upstreamTimeoutMs,
 	}: TestProxyOptions = {},
 ) {
 	const proxy = createProxy({
@@ -61,6 +63,7 @@ export function proxyFor(
 		dailyQuota,
 		now,
 		githubToken,
+		...(upstreamTimeoutMs === undefined ? {} : { upstreamTimeoutMs }),
 	});
 	return (
 		path: string,
@@ -77,12 +80,21 @@ export function proxyFor(
 interface SingleRequestInit extends ProxyRequestInit {
 	dailyQuota?: QuotaCounter;
 	githubToken?: string;
+	upstreamTimeoutMs?: number;
 }
 
 export function proxyRequest(
 	upstream: ReturnType<typeof stubUpstream>,
 	path: string,
-	{ dailyQuota, githubToken, ...init }: SingleRequestInit = {},
+	{
+		dailyQuota,
+		githubToken,
+		upstreamTimeoutMs,
+		...init
+	}: SingleRequestInit = {},
 ): Promise<Response> {
-	return proxyFor(upstream, { dailyQuota, githubToken })(path, init);
+	return proxyFor(upstream, { dailyQuota, githubToken, upstreamTimeoutMs })(
+		path,
+		init,
+	);
 }
