@@ -59,7 +59,7 @@ upstream one.
 
 | Status | `error` | When | Extra fields |
 | :- | :- | :- | :- |
-| 400 | `invalid_request` | bad or missing package name, `url` missing, given more than once or not a URL | |
+| 400 | `invalid_request` | package name bad, missing or given more than once; `url` missing, given more than once or not a URL | |
 | 400 | `unsupported_archive_host` | `url` matches no row of the archive table | `host` |
 | 403 | `origin_not_allowed` | see above | |
 | 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata (PHP-04) | |

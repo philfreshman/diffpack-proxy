@@ -229,4 +229,19 @@ describe("a hostile archive package", () => {
 		);
 		expect(upstream.calls).toEqual([]);
 	});
+
+	it("given twice is refused as invalid_request", async () => {
+		const upstream = servingZipAt(CODELOAD);
+
+		const response = await proxyRequest(
+			upstream,
+			`${archivePath({ package: "monolog/monolog", url: GITHUB_DIST })}&${new URLSearchParams({ package: "psr/log" })}`,
+		);
+
+		expect(response.status).toBe(400);
+		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
+			"invalid_request",
+		);
+		expect(upstream.calls).toEqual([]);
+	});
 });

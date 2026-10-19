@@ -45,7 +45,7 @@ export async function relayArchive(
 	upstream: Upstream,
 	params: URLSearchParams,
 ): Promise<Response> {
-	if (!isComposerPackageName(params.get("package"))) {
+	if (!isComposerPackageName(singleValue(params, "package"))) {
 		return invalidPackageName();
 	}
 	const distUrl = singleValue(params, "url");
