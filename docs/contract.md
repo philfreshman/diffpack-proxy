@@ -55,6 +55,28 @@ answer: if it fails too, it is mapped like any other upstream answer. There is n
 and no retry for any other status, host or route. Without the token, a `429` or `403` from
 `codeload` answers `502 upstream_failed` as before.
 
+## Edge cache
+
+On a custom domain, the proxy keeps successful p2 and archive answers in Cloudflare's cache of
+the data centre that served them, keyed by the upstream URL it fetched. A later request for the
+same upstream URL in the same data centre is answered from there with the same body and headers,
+without contacting upstream.
+
+- A p2 file is kept for 5 minutes and an archive for up to a year, as their `Cache-Control`
+  says. Cloudflare may drop either earlier.
+- An answer is kept only once the client has received all of it, and only if it is 5 MB or
+  smaller. One that declares a larger `Content-Length`, or passes 5 MB while streaming, is
+  streamed through without being kept. Errors and answers to `HEAD` are never kept.
+- An answer from the cache goes through every other rule first: the origin check, the archive
+  listing check and the daily quota. It counts against the budget like any other request.
+- On `*.workers.dev`, where Cloudflare's cache does nothing, the proxy does not use it at all.
+
+Successful p2 and archive answers carry `Diffpack-Proxy-Cache`: `hit` when the answer came from
+the cache, `miss` when it came from upstream and may be kept, and `bypass` when it came from
+upstream and will not be kept (on `*.workers.dev`, or above 5 MB). The header is for people
+checking the proxy with `curl` or the browser's developer tools; it is not in
+`Access-Control-Expose-Headers`, and clients must not depend on it.
+
 ## Every answer
 
 - The request's `Origin` must be `https://diffpack.io`, `https://www.diffpack.io`,
