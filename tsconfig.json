@@ -4,11 +4,18 @@
 		"module": "es2022",
 		"moduleResolution": "bundler",
 		"lib": ["es2024"],
-		"types": ["@cloudflare/workers-types"],
+		"types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"],
 		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"isolatedModules": true,
 		"skipLibCheck": true
 	},
-	"include": ["src"]
+	"include": ["src", "test", "vitest.config.ts"]
 }
