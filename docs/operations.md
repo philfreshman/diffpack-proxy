@@ -87,7 +87,7 @@ resets at 00:00 UTC; none is monthly.
 | :- | :- | :- |
 | Worker requests | 100,000 a day, per account | The proxy's own budget stops at `DAILY_REQUEST_BUDGET` (90,000). |
 | CPU time | 10 ms per request | The proxy streams bytes and never unpacks them, so time spent waiting on Packagist or GitHub does not count. |
-| Subrequests | 50 per request | The archive route makes at most 8: the Packagist read and the archive, each with up to 3 redirects. |
+| Subrequests | 50 per request | The archive route makes at most 12: the Packagist read, the archive and, with `GITHUB_TOKEN` set, one GitHub API retry, each with up to 3 redirects. |
 | Durable Object requests | 100,000 a day | One counter call per counted request, see "The daily quota counter". |
 | Durable Object duration | 13,000 GB-s a day | About 10,800 GB-s even if the counter never sleeps. |
 | Durable Object SQLite rows | 5 million read and 100,000 written a day, 5 GB stored | One row, written once per counted request. |
@@ -171,6 +171,44 @@ If debugging ever needs request logs:
   1 December 2026). A logged request includes its URL, so the package name and version, but no
   archive contents and no bodies. Before merging that change, update the "What it stores"
   paragraph in the README to say so, including the sampling rate and the retention.
+
+## GitHub token (optional)
+
+GitHub may throttle anonymous `codeload` downloads from Cloudflare's addresses. That shows up as
+archives answering `502 upstream_failed` with `upstreamStatus` `429` or `403`. Only then is the
+optional Worker secret `GITHUB_TOKEN` worth setting. With it, the proxy retries such an archive
+once through `https://api.github.com/repos/{owner}/{repo}/zipball/{sha}` with the token, and
+follows the redirect to `codeload` without it (see "Routes" in `docs/contract.md`). Authenticated
+API calls get 5,000 requests per hour, shared with every other token of the same GitHub account.
+A retry is still one Worker request and one count against `DAILY_REQUEST_BUDGET`; it only adds
+subrequests.
+
+Without the secret, the proxy behaves exactly as before. The proxy never logs the token and
+never puts it in an answer.
+
+To create the token (only the repository owner can do this):
+
+1. On GitHub, open **Settings > Developer settings > Personal access tokens > Fine-grained
+   tokens** and select **Generate new token**.
+2. Name it, for example `diffpack-proxy`, and pick an expiration. Note the date: the fallback
+   stops working silently when the token expires.
+3. Under **Repository access**, choose **Public repositories**. Add no permissions: the token can
+   then only read public repositories.
+4. Generate it and copy it once.
+
+To set it on the deployed Worker:
+
+```bash
+bunx wrangler login
+bunx wrangler secret put GITHUB_TOKEN
+```
+
+Paste the token at the prompt, never on the command line, so it stays out of the shell history.
+Setting a secret deploys a new version of the Worker right away. Later `wrangler deploy` runs
+keep it, because secrets are not part of `wrangler.jsonc`. To rotate it, run the same command
+with a new token. To turn the fallback off, run `bunx wrangler secret delete GITHUB_TOKEN`.
+
+For `bun run dev`, put `GITHUB_TOKEN=<token>` in `.dev.vars`, which git ignores.
 
 ## The daily quota counter
 

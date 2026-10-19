@@ -12,6 +12,7 @@ const ARCHIVE_HEADERS = {
 interface ArchiveHost {
 	listedUrl: RegExp;
 	sourceUrl(listed: RegExpExecArray): string;
+	githubApiUrl?(listed: RegExpExecArray): string;
 }
 
 const SEGMENT = "([A-Za-z0-9_.-]+)";
@@ -27,6 +28,7 @@ const ARCHIVE_HOSTS: ArchiveHost[] = [
 		),
 		sourceUrl: ([, owner, repo, sha]) =>
 			`https://codeload.github.com/${owner}/${repo}/legacy.zip/${sha}`,
+		githubApiUrl: ([listed]) => listed,
 	},
 	{
 		listedUrl: new RegExp(
@@ -42,10 +44,15 @@ const ARCHIVE_HOSTS: ArchiveHost[] = [
 	},
 ];
 
+interface ArchiveSource {
+	url: string;
+	githubApiUrl?: string | undefined;
+}
+
 interface ArchiveRequest {
 	packageName: string;
 	distUrl: string;
-	source: string;
+	source: ArchiveSource;
 }
 
 export async function relayArchive(
@@ -61,7 +68,14 @@ export async function relayArchive(
 		request.packageName,
 		request.distUrl,
 	);
-	return refusal ?? upstream.relay(request.source, ARCHIVE_HEADERS);
+	return (
+		refusal ??
+		upstream.relay(
+			request.source.url,
+			ARCHIVE_HEADERS,
+			request.source.githubApiUrl,
+		)
+	);
 }
 
 function archiveRequestFrom(
@@ -98,11 +112,14 @@ function hostnameOf(url: string): string | undefined {
 	return URL.canParse(url) ? new URL(url).hostname : undefined;
 }
 
-function archiveSourceFor(distUrl: string): string | undefined {
+function archiveSourceFor(distUrl: string): ArchiveSource | undefined {
 	for (const host of ARCHIVE_HOSTS) {
 		const listed = host.listedUrl.exec(distUrl);
 		if (listed?.slice(1).every(isPlainSegment)) {
-			return host.sourceUrl(listed);
+			return {
+				url: host.sourceUrl(listed),
+				githubApiUrl: host.githubApiUrl?.(listed),
+			};
 		}
 	}
 	return undefined;

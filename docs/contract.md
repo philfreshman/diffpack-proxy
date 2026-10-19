@@ -48,6 +48,13 @@ archive Packagist stops listing can stay servable that long. Failed reads are no
 The GitHub rewrite skips `api.github.com`, which only answers with a redirect to `codeload` and
 counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
 
+If `codeload` answers `429` or `403` and the proxy has a GitHub token (see `docs/operations.md`),
+it retries that archive once through the listed `api.github.com` URL with the token, then follows
+the redirect to `codeload` under the same rules, without the token. The retry's answer is the
+answer: if it fails too, it is mapped like any other upstream answer. There is no second retry,
+and no retry for any other status, host or route. Without the token, a `429` or `403` from
+`codeload` answers `502 upstream_failed` as before.
+
 ## Every answer
 
 - The request's `Origin` must be `https://diffpack.io`, `https://www.diffpack.io`,
@@ -58,8 +65,9 @@ counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
   `Access-Control-Expose-Headers: Retry-After, Diffpack-Proxy-Error`.
 - `OPTIONS` answers `204` with `Access-Control-Allow-Methods: GET, HEAD` and `Access-Control-Max-Age: 86400`.
 - Nothing from the browser request is forwarded upstream (no cookies, no headers). Upstream
-  requests send `User-Agent: diffpack-proxy (+https://diffpack.io)`, as Packagist asks.
-  No upstream response header is passed back, `Set-Cookie` included.
+  requests send `User-Agent: diffpack-proxy (+https://diffpack.io)`, as Packagist asks. Only the
+  GitHub API retry above adds `Authorization: Bearer <token>`, and never to a redirect target.
+  No upstream response header is passed back, `Set-Cookie` included. No answer contains the token.
 
 ## Daily quota
 
@@ -96,7 +104,7 @@ upstream one.
 | 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata | |
 | 404 | `not_found` | Packagist or the archive host answered 404, or the path matches no route | |
 | 405 | `method_not_allowed` | not GET, HEAD or OPTIONS, on any path; the answer carries `Allow: GET, HEAD, OPTIONS` | |
-| 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds, could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
+| 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds (the GitHub API retry gets its own 25 seconds), could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
 | 503 | `quota_exhausted` | today's budget is used up, or the quota counter cannot be reached (see "Daily quota") | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |
 
 The `quota_exhausted` message reads: "diffpack's Composer proxy has used today's free allowance.

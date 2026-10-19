@@ -7,5 +7,6 @@ declare namespace Cloudflare {
 	interface Env {
 		DAILY_QUOTA: DurableObjectNamespace<import("./daily-quota").DailyQuota>;
 		DAILY_REQUEST_BUDGET: number | string;
+		GITHUB_TOKEN?: string;
 	}
 }
