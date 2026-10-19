@@ -26,6 +26,16 @@ export function stubUpstream(answers: UpstreamAnswers = {}) {
 	return { fetch, calls };
 }
 
+export function manualClock() {
+	let time = Date.UTC(2026, 9, 19, 12);
+	return {
+		now: () => time,
+		advanceMinutes(minutes: number) {
+			time += minutes * 60_000;
+		},
+	};
+}
+
 interface ProxyRequestInit extends RequestInit {
 	origin?: string | null;
 }
@@ -36,9 +46,9 @@ interface TestProxyOptions {
 
 export function proxyFor(
 	upstream: ReturnType<typeof stubUpstream>,
-	options: TestProxyOptions = {},
+	{ now = Date.now }: TestProxyOptions = {},
 ) {
-	const proxy = createProxy({ fetch: upstream.fetch, ...options });
+	const proxy = createProxy({ fetch: upstream.fetch, now });
 	return (
 		path: string,
 		{ origin = ALLOWED_ORIGIN, ...init }: ProxyRequestInit = {},
