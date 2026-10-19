@@ -2,10 +2,11 @@
 
 ## Production origin
 
-Not deployed yet. The address will be `https://diffpack-proxy.<subdomain>.workers.dev`, where
-`<subdomain>` is the Cloudflare account's `workers.dev` subdomain. After the first deploy, write
-the real address here and in the D2 row of the PHP plan (`php-implementation-plan.md`, in the
-folder that holds the diffpack repos), so the engine and the app use it as their proxy origin.
+`https://diffpack-proxy.philipswiezak.workers.dev`, first deployed on 2026-10-19. This is the
+proxy origin the engine and the app are configured with once they add Composer support. The D2 row
+of the PHP plan (`php-implementation-plan.md`, in the folder that holds the diffpack repos)
+records it too. If the address ever changes, update both places and each client's configured
+proxy origin.
 
 ## How deploys work
 
@@ -68,7 +69,7 @@ It prints one `PASS` or `FAIL` line per check and exits non-zero if any check fa
 only `bash` and `curl`. Run it by hand against production or a local `bun run dev`:
 
 ```bash
-scripts/smoke.sh https://diffpack-proxy.<subdomain>.workers.dev
+scripts/smoke.sh https://diffpack-proxy.philipswiezak.workers.dev
 scripts/smoke.sh http://localhost:8787
 ```
 
@@ -123,8 +124,9 @@ the value in `wrangler.jsonc`.
 
 ## Reading usage in the dashboard
 
-- **Today's count as the proxy sees it:** `curl https://<production origin>/v1/status`. Each call
-  costs one request from the budget.
+- **Today's count as the proxy sees it:**
+  `curl https://diffpack-proxy.philipswiezak.workers.dev/v1/status`. Each call costs one request
+  from the budget.
 - **Worker requests, errors and CPU time:** **Workers & Pages > diffpack-proxy > Metrics**. These
   aggregate metrics exist even with Workers Logs off.
 - **The account's daily request total against the 100,000 limit:** the **Workers & Pages**
