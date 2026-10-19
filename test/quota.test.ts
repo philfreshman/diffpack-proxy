@@ -334,6 +334,23 @@ describe("GET /v1/status", () => {
 	});
 });
 
+describe("a /v1/status request the proxy refuses", () => {
+	it.each([
+		["a POST", 405, { method: "POST", headers: { Origin: ALLOWED_ORIGIN } }],
+		["a foreign origin", 403, { headers: { Origin: "https://example.com" } }],
+	])("counts like any request, for %s", async (_, refusedWith, init) => {
+		const proxy = proxyAt(NOON);
+
+		const refused = await proxy.fetch(
+			new Request(`${PROXY}${STATUS_PATH}`, init),
+		);
+		const status = await send(proxy, STATUS_PATH);
+
+		expect(refused.status).toBe(refusedWith);
+		expect(await status.json()).toMatchObject({ used: 2 });
+	});
+});
+
 describe("requests outside the quota", () => {
 	it.each([
 		["GET /v1/health", "/v1/health", "GET"],

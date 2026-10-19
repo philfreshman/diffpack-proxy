@@ -10,7 +10,6 @@ import { createUpstream, type UpstreamFetch } from "./upstream";
 
 const HEALTH_PATH = "/v1/health";
 const STATUS_PATH = "/v1/status";
-const PATHS_OUTSIDE_QUOTA_GUARD = new Set([HEALTH_PATH, STATUS_PATH]);
 const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
 const PREFLIGHT_HEADERS = {
 	"Access-Control-Allow-Methods": "GET, HEAD",
@@ -26,8 +25,11 @@ interface ProxyDependencies {
 	now?: Clock;
 }
 
+type QuotaRule = "counted" | "exempt" | "countsItself";
+
 interface Route {
 	answersWithoutOrigin: boolean;
+	quota: QuotaRule;
 	answer(): Promise<Response>;
 }
 
@@ -47,11 +49,16 @@ export function createProxy({
 
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
-			return { answersWithoutOrigin: true, answer: async () => health() };
+			return {
+				answersWithoutOrigin: true,
+				quota: "exempt",
+				answer: async () => health(),
+			};
 		}
 		if (pathname === STATUS_PATH) {
 			return {
 				answersWithoutOrigin: true,
+				quota: "countsItself",
 				answer: () => quotaGuard.status(currentMoment()),
 			};
 		}
@@ -59,29 +66,32 @@ export function createProxy({
 		if (p2Name !== undefined) {
 			return {
 				answersWithoutOrigin: false,
+				quota: "counted",
 				answer: () => relayP2(upstream, p2Name),
 			};
 		}
 		if (pathname === ARCHIVE_PATH) {
 			return {
 				answersWithoutOrigin: false,
+				quota: "counted",
 				answer: () => relayArchive(upstream, listing, searchParams),
 			};
 		}
-		return { answersWithoutOrigin: true, answer: async () => noSuchRoute() };
+		return {
+			answersWithoutOrigin: true,
+			quota: "counted",
+			answer: async () => noSuchRoute(),
+		};
 	}
 
 	async function answer(
 		request: Request,
-		url: URL,
+		route: Route,
 		origin: string | null,
 	): Promise<Response> {
-		if (!ALLOWED_METHODS.includes(request.method)) {
-			return methodNotAllowed();
-		}
-		const route = routeFor(url);
-		if (!originPermits(origin, route)) {
-			return originNotAllowed();
+		const refusal = refusalFor(request, route, origin);
+		if (refusal !== undefined) {
+			return refusal;
 		}
 		if (request.method === "OPTIONS") {
 			return preflight();
@@ -93,12 +103,15 @@ export function createProxy({
 		request: Request,
 		origin: string | null,
 	): Promise<Response> {
-		const url = new URL(request.url);
-		if (bypassesQuotaGuard(request, url)) {
-			return answer(request, url, origin);
+		const route = routeFor(new URL(request.url));
+		if (isExemptFromQuota(request, route)) {
+			return answer(request, route, origin);
+		}
+		if (countsItself(request, route, origin)) {
+			return route.answer();
 		}
 		return quotaGuard.admit(currentMoment(), () =>
-			answer(request, url, origin),
+			answer(request, route, origin),
 		);
 	}
 
@@ -119,8 +132,33 @@ async function withoutBody(response: Response): Promise<Response> {
 	return new Response(null, response);
 }
 
-function bypassesQuotaGuard({ method }: Request, { pathname }: URL): boolean {
-	return method === "OPTIONS" || PATHS_OUTSIDE_QUOTA_GUARD.has(pathname);
+function isExemptFromQuota({ method }: Request, route: Route): boolean {
+	return method === "OPTIONS" || route.quota === "exempt";
+}
+
+function countsItself(
+	request: Request,
+	route: Route,
+	origin: string | null,
+): boolean {
+	return (
+		route.quota === "countsItself" &&
+		refusalFor(request, route, origin) === undefined
+	);
+}
+
+function refusalFor(
+	{ method }: Request,
+	route: Route,
+	origin: string | null,
+): Response | undefined {
+	if (!ALLOWED_METHODS.includes(method)) {
+		return methodNotAllowed();
+	}
+	if (!originPermits(origin, route)) {
+		return originNotAllowed();
+	}
+	return undefined;
 }
 
 function originPermits(origin: string | null, route: Route): boolean {
