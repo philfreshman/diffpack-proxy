@@ -74,6 +74,99 @@ Each run sends 6 requests to the Worker. Cloudflare counts all 6 against its 100
 one more `/v1/health` request while it waits. The smoke test fails on a day the budget is used
 up, because `/v1/status` then reports `open: false`.
 
+## Free-plan limits
+
+These are the Cloudflare Workers Free plan limits that matter for the proxy. Every daily limit
+resets at 00:00 UTC; none is monthly.
+
+| Limit | Free plan | How the proxy stays inside it |
+| :- | :- | :- |
+| Worker requests | 100,000 a day, per account | The proxy's own budget stops at `DAILY_REQUEST_BUDGET` (90,000). |
+| CPU time | 10 ms per request | The proxy streams bytes and never unpacks them, so time spent waiting on Packagist or GitHub does not count. |
+| Subrequests | 50 per request | The archive route makes at most 8: the Packagist read and the archive, each with up to 3 redirects. |
+| Durable Object requests | 100,000 a day | One counter call per counted request, see "The daily quota counter". |
+| Durable Object duration | 13,000 GB-s a day | About 10,800 GB-s even if the counter never sleeps. |
+| Durable Object SQLite rows | 5 million read and 100,000 written a day, 5 GB stored | One row, written once per counted request. |
+
+Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and
+[Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+## What people see when a limit is reached
+
+- **The proxy's budget is used up.** Every counted request answers `503 quota_exhausted` with
+  `resetsAt` and `Retry-After`, and `/v1/status` reports `open: false`. The app can read this
+  answer and show its message, "diffpack's Composer proxy has used today's free allowance. It
+  resets at 00:00 UTC." Other registries keep working, since they do not use the proxy. This is the normal way a busy day ends.
+- **The counter's own Durable Object limits are used up, or it cannot be reached.** The proxy
+  fails closed with the same `503 quota_exhausted` answer.
+- **Cloudflare's 100,000 Worker requests are used up.** Cloudflare stops running the Worker and
+  answers with its own "Error 1027" page. That page has no CORS header, so in the browser the
+  request fails like being offline. The app reports `proxy_unreachable` and says the proxy may be
+  over its daily limit. This only happens if the requests that arrive after the budget is spent,
+  plus the uncounted `/v1/health` checks and `OPTIONS` preflights, add up to more than the 10,000
+  of headroom, or if another Worker in the same account uses the account's requests.
+- **A request goes over 10 ms of CPU.** Cloudflare ends it with its own error page, which the
+  browser also sees as a network failure. The proxy's work per request is far below this.
+
+## Changing the daily budget
+
+Edit `vars.DAILY_REQUEST_BUDGET` in `wrangler.jsonc`, open a pull request and merge it into
+`main`; the deploy applies it. Keep it below 100,000, and leave headroom for the requests that
+keep arriving after the budget is spent. Today's count is not reset: if the new budget is below
+today's count, the proxy refuses counted requests until 00:00 UTC.
+
+Do not change the value in the Cloudflare dashboard: the next `wrangler deploy` overwrites it with
+the value in `wrangler.jsonc`.
+
+## Reading usage in the dashboard
+
+- **Today's count as the proxy sees it:** `curl https://<production origin>/v1/status`. Each call
+  costs one request from the budget.
+- **Worker requests, errors and CPU time:** **Workers & Pages > diffpack-proxy > Metrics**. These
+  aggregate metrics exist even with Workers Logs off.
+- **The account's daily request total against the 100,000 limit:** the **Workers & Pages**
+  overview page.
+- **The counter's requests, duration and storage:** **Workers & Pages > Durable Objects**, then the
+  `DailyQuota` namespace.
+
+## Rolling back
+
+Every deploy creates a new Worker version, and Cloudflare keeps the last 100. To go back to the
+version before the current one:
+
+```bash
+bunx wrangler login
+bunx wrangler rollback --message "<why>"
+```
+
+`bunx wrangler deployments list` shows recent deployments, and
+`bunx wrangler rollback <VERSION_ID>` goes back to a specific one. In the dashboard, the same is
+under **Workers & Pages > diffpack-proxy > Deployments**, in the menu next to a version. A
+rollback does not change the Durable Object or its stored count, and Cloudflare refuses it across
+a change to the Durable Object classes in `migrations`.
+
+A rollback only changes what runs on Cloudflare. The next push to `main` deploys again, so also
+revert the bad change on `main`.
+
+## Logging
+
+Workers Logs are off: `observability.enabled` is `false` in `wrangler.jsonc`, and the proxy
+calls no `console` method. So Cloudflare stores no request logs for it. What remains is
+Cloudflare's aggregate metrics (request counts, errors, CPU time), which do not list single
+requests or their URLs.
+This matches the README's promise that the proxy logs nothing.
+
+If debugging ever needs request logs:
+
+- **For a few minutes, without storing anything:** `bunx wrangler tail` streams live requests to
+  your terminal while it runs. Nothing is kept afterwards.
+- **Stored logs:** set `observability` in `wrangler.jsonc` to
+  `{ "enabled": true, "head_sampling_rate": 0.01 }` to keep 1 in 100 requests in Workers Logs
+  (3 days on the free plan, 7 days once Cloudflare's new observability pricing starts on
+  1 December 2026). A logged request includes its URL, so the package name and version, but no
+  archive contents and no bodies. Before merging that change, update the "What it stores"
+  paragraph in the README to say so, including the sampling rate and the retention.
+
 ## The daily quota counter
 
 - The count lives in one Durable Object of the class `DailyQuota`, reached by the name `global`,
