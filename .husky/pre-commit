@@ -1,0 +1,6 @@
+set -e
+
+bun run typecheck
+bun run lint
+bun run format
+bun run test
