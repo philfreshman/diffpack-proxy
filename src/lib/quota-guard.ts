@@ -1,8 +1,6 @@
 import { type QuotaCounter, type QuotaTicket, quotaExhausted } from "./quota";
 import { isoTimestamp, nextUtcMidnight } from "./utc-day";
 
-export type QuotaGuard = ReturnType<typeof createQuotaGuard>;
-
 export function createQuotaGuard(dailyQuota: QuotaCounter) {
 	let closedUntil = new Date(0);
 
