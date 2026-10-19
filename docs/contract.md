@@ -73,8 +73,8 @@ with an answer the browser can read.
   00:00 UTC. So does every counted request while the counter itself cannot be reached: the proxy
   fails closed.
 - `/v1/status` counts like any request and always asks the counter, so it reports the live count.
-  `open` is `false` once the day is used up, and the answer stays `200` so monitoring can read
-  it. `used` is today's count including this request, and it keeps growing past `budget` while
+  `open` says whether the next counted request will be answered: it is `false` once `used`
+  reaches `budget`, and the answer stays `200` so monitoring can read it. `used` is today's count including this request, and it keeps growing past `budget` while
   requests arrive. `resetsAt` is the next 00:00 UTC. Only when the counter cannot be reached does
   `/v1/status` answer `503 quota_exhausted`.
 

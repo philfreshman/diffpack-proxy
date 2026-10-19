@@ -316,6 +316,21 @@ describe("GET /v1/status", () => {
 		});
 	});
 
+	it("reports open false once it has used the last of the budget itself", async () => {
+		const proxy = proxyAt(NOON);
+		for (let request = 1; request < TEST_DAILY_BUDGET; request++) {
+			await (await send(proxy, P2_PATH)).body?.cancel();
+		}
+
+		const response = await send(proxy, STATUS_PATH);
+
+		expect(await response.json()).toMatchObject({
+			open: false,
+			used: TEST_DAILY_BUDGET,
+		});
+		expect((await send(proxy, P2_PATH)).status).toBe(503);
+	});
+
 	it("answers 503 quota_exhausted when the counter cannot be reached", async () => {
 		const proxy = proxyAt("2026-10-19T23:00:00Z", {
 			dailyQuota: {

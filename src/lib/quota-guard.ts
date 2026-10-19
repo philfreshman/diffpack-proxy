@@ -39,14 +39,9 @@ export function createQuotaGuard(dailyQuota: QuotaCounter) {
 	};
 }
 
-function statusReport({
-	allowed,
-	used,
-	budget,
-	resetsAt,
-}: QuotaTicket): Response {
+function statusReport({ used, budget, resetsAt }: QuotaTicket): Response {
 	return Response.json({
-		open: allowed,
+		open: used < budget,
 		used,
 		budget,
 		resetsAt: isoTimestamp(resetsAt),
