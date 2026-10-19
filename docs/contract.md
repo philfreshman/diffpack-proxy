@@ -5,7 +5,8 @@ and the wasm engine (`set_proxy_origin`) are its clients, so changing a route, a
 code is a breaking change for both.
 
 `PROXY_ORIGIN` is the proxy's address, for example `https://diffpack-proxy.<account>.workers.dev`.
-Only `GET`, `HEAD` and `OPTIONS` are accepted.
+Only `GET`, `HEAD` and `OPTIONS` are accepted. `HEAD` answers with the same status and headers as
+`GET`, without a body.
 
 ## Routes
 
@@ -31,8 +32,8 @@ is `400 unsupported_archive_host`:
 `{owner}` and `{repo}` match `[A-Za-z0-9_.-]+` (and are never `.` or `..`). `{sha}` is 40
 hex characters. `{ref}` is 7–40 hex characters. `{project}` is a number or a URL-encoded path
 matching `[A-Za-z0-9%._-]+`. Nothing else is accepted: no user info, no port, no extra query
-parameters, `https` only. Redirects are followed by hand, at most 3, and only to the hosts in the
-right-hand column.
+parameters, `https` only. Redirects are followed by hand, at most 3, and only to `https` URLs
+without user info or a port on `repo.packagist.org` or a host in the right-hand column.
 
 The GitHub rewrite skips `api.github.com`, which only answers with a redirect to `codeload` and
 counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
@@ -42,13 +43,13 @@ counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
 - The request's `Origin` must be `https://diffpack.io`, `https://www.diffpack.io`,
   `http://localhost:<port>` or `http://127.0.0.1:<port>`. Otherwise the answer is
   `403 origin_not_allowed` with no CORS headers. `/v1/status` and `/v1/health` also answer when
-  there is no `Origin` header, for monitoring.
+  there is no `Origin` header, for monitoring, and so does a path that matches no route (`404`).
 - Allowed requests get `Access-Control-Allow-Origin: <that origin>`, `Vary: Origin` and
   `Access-Control-Expose-Headers: Retry-After, Diffpack-Proxy-Error`.
 - `OPTIONS` answers `204` with `Access-Control-Allow-Methods: GET, HEAD` and `Access-Control-Max-Age: 86400`.
 - Nothing from the browser request is forwarded upstream (no cookies, no headers). Upstream
   requests send `User-Agent: diffpack-proxy (+https://diffpack.io)`, as Packagist asks.
-  `Set-Cookie` from upstream is dropped.
+  No upstream response header is passed back, `Set-Cookie` included.
 
 ## Errors
 
@@ -58,13 +59,13 @@ upstream one.
 
 | Status | `error` | When | Extra fields |
 | :- | :- | :- | :- |
-| 400 | `invalid_request` | bad package name, missing or malformed `url` | |
+| 400 | `invalid_request` | bad or missing package name, `url` missing, given more than once or not a URL | |
 | 400 | `unsupported_archive_host` | `url` matches no row of the archive table | `host` |
 | 403 | `origin_not_allowed` | see above | |
 | 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata (PHP-04) | |
-| 404 | `not_found` | Packagist or the archive host answered 404 | |
-| 405 | `method_not_allowed` | not GET, HEAD or OPTIONS | |
-| 502 | `upstream_failed` | upstream answered 429 or 5xx, timed out, or redirected somewhere not allowed | `upstreamStatus` when there was one |
+| 404 | `not_found` | Packagist or the archive host answered 404, or the path matches no route | |
+| 405 | `method_not_allowed` | not GET, HEAD or OPTIONS, on any path; the answer carries `Allow: GET, HEAD, OPTIONS` | |
+| 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds, could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |
 | 503 | `quota_exhausted` | today's budget is used up | `resetsAt` (ISO 8601, next 00:00 UTC), plus a `Retry-After` header in seconds |
 
 The `quota_exhausted` message reads: "diffpack's Composer proxy has used today's free allowance.
