@@ -1,17 +1,28 @@
+import { p2PackageName, relayP2 } from "./composer";
 import { errorResponse } from "./errors";
+import { createUpstream, type UpstreamFetch } from "./upstream";
 
 const HEALTH_PATH = "/v1/health";
 const ALLOWED_METHODS = ["GET", "HEAD", "OPTIONS"];
 
-export function createProxy() {
+interface ProxyDependencies {
+	fetch: UpstreamFetch;
+}
+
+export function createProxy({ fetch }: ProxyDependencies) {
+	const upstream = createUpstream(fetch);
 	return {
-		fetch(request: Request): Response {
+		async fetch(request: Request): Promise<Response> {
 			if (!ALLOWED_METHODS.includes(request.method)) {
 				return methodNotAllowed();
 			}
 			const { pathname } = new URL(request.url);
 			if (pathname === HEALTH_PATH) {
 				return Response.json({ ok: true });
+			}
+			const p2Name = p2PackageName(pathname);
+			if (p2Name !== undefined) {
+				return relayP2(upstream, p2Name);
 			}
 			return errorResponse("not_found", "No route matches this path.");
 		},
