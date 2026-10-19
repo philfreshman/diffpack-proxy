@@ -14,9 +14,16 @@ directly, without the proxy.
 
 ## What it stores
 
-Nothing. It streams bytes through without unpacking, storing or logging them, and it never sees
-a diff. The only state it keeps is a count of today's requests, so it can stop itself before
-Cloudflare's free daily limit is reached.
+No package contents of its own. It streams bytes through without unpacking or logging them, and
+it never sees a diff. The only state it keeps is a count of today's requests, so it can stop
+itself before Cloudflare's free daily limit is reached.
+
+Once it runs on a custom domain, Cloudflare's cache in each data centre also keeps copies of the
+public files it passed on: Packagist metadata for 5 minutes, and archives of up to 5 MB, which
+never change, until Cloudflare drops them. On `workers.dev`, where it runs today, it caches
+nothing. A cached answer still counts against the daily budget, so the cache saves trips to
+GitHub and Packagist and makes repeat downloads faster, but it does not stretch the budget. See
+"Edge cache" in [docs/operations.md](docs/operations.md).
 
 The routes, headers and error codes are described in [docs/contract.md](docs/contract.md).
 
@@ -74,5 +81,5 @@ access.
 
 Every push to `main` deploys the Worker to Cloudflare and runs `scripts/smoke.sh` against it.
 [docs/operations.md](docs/operations.md) covers the first deploy, the smoke test, the free-plan
-limits, what people see when a limit is reached, usage, rollback, logging and where the daily
-counter runs.
+limits, what people see when a limit is reached, usage, rollback, logging, the edge cache and where
+the daily counter runs.

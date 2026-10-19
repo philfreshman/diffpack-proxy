@@ -87,7 +87,7 @@ resets at 00:00 UTC; none is monthly.
 | :- | :- | :- |
 | Worker requests | 100,000 a day, per account | The proxy's own budget stops at `DAILY_REQUEST_BUDGET` (90,000). |
 | CPU time | 10 ms per request | The proxy streams bytes and never unpacks them, so time spent waiting on Packagist or GitHub does not count. |
-| Subrequests | 50 per request | The archive route makes at most 12: the Packagist read, the archive and, with `GITHUB_TOKEN` set, one GitHub API retry, each with up to 3 redirects. |
+| Subrequests | 50 per request, Cache API calls included | The archive route makes at most 14: the Packagist read, the archive and, with `GITHUB_TOKEN` set, one GitHub API retry, each with up to 3 redirects, plus one cache lookup and one cache write on a custom domain. |
 | Durable Object requests | 100,000 a day | One counter call per counted request, see "The daily quota counter". |
 | Durable Object duration | 13,000 GB-s a day | About 10,800 GB-s even if the counter never sleeps. |
 | Durable Object SQLite rows | 5 million read and 100,000 written a day, 5 GB stored | One row, written once per counted request. |
@@ -209,6 +209,48 @@ keep it, because secrets are not part of `wrangler.jsonc`. To rotate it, run the
 with a new token. To turn the fallback off, run `bunx wrangler secret delete GITHUB_TOKEN`.
 
 For `bun run dev`, put `GITHUB_TOKEN=<token>` in `.dev.vars`, which git ignores.
+
+## Edge cache
+
+The proxy keeps successful p2 and archive answers in Cloudflare's cache, as described under "Edge
+cache" in `docs/contract.md`. It only does so on a custom domain: on `workers.dev`, where it runs
+today, Cloudflare's cache does nothing, so the proxy does not use it and every answer says
+`Diffpack-Proxy-Cache: bypass`. The code is in place and turns itself on once decision D2 in the
+PHP plan moves the proxy to a custom domain such as `proxy.diffpack.io`.
+
+What it buys, and what it does not:
+
+- **It saves upstream load and time, not quota.** An answer from the cache still runs the Worker,
+  so it still counts as one of Cloudflare's 100,000 requests a day and one count against
+  `DAILY_REQUEST_BUDGET`. It saves the trip to GitHub or Packagist, and with it time and the risk
+  of GitHub throttling `codeload`. The Packagist listing check still runs before a cached archive
+  is served, from the Worker's in-memory copy when it has one.
+- **Expect modest hit rates.** The cache belongs to one data centre and is not shared with
+  others, so only readers near each other who compare the same versions share entries. Popular
+  packages benefit the most.
+- **Archives up to 5 MB only.** While an answer streams to the client, the proxy keeps a copy and
+  stores it when the client has received all of it. To bound memory in an isolate (128 MB), it
+  keeps no copy of an answer that declares more than 5 MB and drops the copy of one that passes
+  5 MB while streaming. That covers well over 90% of Composer archives; larger ones, such as
+  `symfony/symfony`, stream through as before. A refused or abandoned request stores nothing.
+- **Entries.** They are keyed by the upstream URL (`https://codeload.github.com/…`,
+  `https://repo.packagist.org/p2/…`). Archive URLs contain a commit SHA, so their content never
+  changes; p2 files expire after 5 minutes. If an entry ever has to go, **Caching > Configuration
+  > Purge Everything** on the zone removes all of them; a purge by URL does not work for them.
+
+To check it by hand once the custom domain exists (pending until D2), request the same archive
+twice from one machine, then the largest archive once:
+
+```bash
+ORIGIN=https://proxy.diffpack.io
+ARCHIVE="$ORIGIN/v1/composer/archive?package=monolog/monolog&url=https%3A%2F%2Fapi.github.com%2Frepos%2FSeldaek%2Fmonolog%2Fzipball%2Fd7059e4c691d05ea1222b5124bed0f961be46e15"
+curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i diffpack-proxy-cache
+curl -s -o /dev/null -D - -H 'Origin: https://diffpack.io' "$ARCHIVE" | grep -i diffpack-proxy-cache
+```
+
+The first prints `miss` and the second `hit`. For `symfony/symfony`, take a current dist URL from
+`https://repo.packagist.org/p2/symfony/symfony.json`: its archive is larger than 5 MB, so it should
+answer `bypass` and arrive whole. Each request costs one count from the budget.
 
 ## The daily quota counter
 
