@@ -1,6 +1,11 @@
 import { ARCHIVE_PATH, relayArchive } from "./archive";
 import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
-import { type BackgroundWork, cachingRelay, type Relay } from "./edge-cache";
+import {
+	type BackgroundWork,
+	bypassingRelay,
+	cachingRelay,
+	type Relay,
+} from "./edge-cache";
 import { errorResponse } from "./errors";
 import { createArchiveListing } from "./listing";
 import type { Clock } from "./memo";
@@ -62,7 +67,7 @@ export function createProxy({
 			context === undefined ||
 			!hasEdgeCache(request)
 		) {
-			return upstream.relay;
+			return bypassingRelay(upstream);
 		}
 		return cachingRelay(upstream, edgeCache, context);
 	}

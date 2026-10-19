@@ -112,18 +112,6 @@ export function createUpstream(
 	return {
 		fetchSuccess,
 
-		async relay(
-			url: string,
-			headers: HeadersInit,
-			githubApiUrl?: string,
-		): Promise<Response> {
-			const fetched = await fetchSuccess(url, githubApiUrl);
-			if ("failure" in fetched) {
-				return fetched.failure;
-			}
-			return new Response(fetched.answer.body, { headers });
-		},
-
 		async text(url: string): Promise<UpstreamText> {
 			const fetched = await fetchSuccess(url);
 			if ("failure" in fetched) {

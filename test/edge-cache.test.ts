@@ -106,6 +106,63 @@ describe("the edge cache on a custom domain", () => {
 	});
 });
 
+describe("the Diffpack-Proxy-Cache header", () => {
+	it("says miss when the answer came from upstream and hit when it came from the cache", async () => {
+		const get = proxyFor(servingMonologZip(), {
+			edgeCache: await freshEdgeCache(),
+		});
+
+		const first = await get(ARCHIVE_PATH);
+		await downloaded(first);
+		await get.settled();
+		const second = await get(ARCHIVE_PATH);
+
+		expect(first.headers.get("Diffpack-Proxy-Cache")).toBe("miss");
+		expect(second.headers.get("Diffpack-Proxy-Cache")).toBe("hit");
+	});
+
+	it("says bypass for an archive too large to cache", async () => {
+		const get = proxyFor(
+			servingMonologZip(
+				() =>
+					new Response(ZIP_BYTES, {
+						headers: {
+							"Content-Length": String(LARGEST_CACHED_ARCHIVE_BYTES + 1),
+						},
+					}),
+			),
+			{ edgeCache: await freshEdgeCache() },
+		);
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("bypass");
+	});
+
+	it("says bypass on workers.dev", async () => {
+		const get = proxyFor(servingMonologZip(), {
+			edgeCache: await freshEdgeCache(),
+			proxyOrigin: "https://diffpack-proxy.philipswiezak.workers.dev",
+		});
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.headers.get("Diffpack-Proxy-Cache")).toBe("bypass");
+	});
+
+	it("is left out of error answers", async () => {
+		const get = proxyFor(
+			servingMonologZip(() => new Response("gone", { status: 404 })),
+			{ edgeCache: await freshEdgeCache() },
+		);
+
+		const response = await get(ARCHIVE_PATH);
+
+		expect(response.status).toBe(404);
+		expect(response.headers.has("Diffpack-Proxy-Cache")).toBe(false);
+	});
+});
+
 describe("a large archive on a custom domain", () => {
 	it("streams straight through without a copy when it declares more than 5 MB", async () => {
 		const upstream = servingMonologZip(

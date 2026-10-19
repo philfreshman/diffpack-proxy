@@ -7,12 +7,25 @@ export type Relay = (
 ) => Promise<Response>;
 
 const LARGEST_CACHED_BYTES = 5 * 1024 * 1024;
+const CACHE_OUTCOME_HEADER = "Diffpack-Proxy-Cache";
+
+type CacheOutcome = "hit" | "miss" | "bypass";
 
 export type BackgroundWork = Pick<ExecutionContext, "waitUntil">;
 
 interface CopiedStream {
 	body: ReadableStream<Uint8Array>;
 	copy: Promise<Uint8Array | undefined>;
+}
+
+export function bypassingRelay(upstream: Upstream): Relay {
+	return async (url, headers, githubApiUrl) => {
+		const fetched = await upstream.fetchSuccess(url, githubApiUrl);
+		if ("failure" in fetched) {
+			return fetched.failure;
+		}
+		return answer(fetched.answer.body, headers, "bypass");
+	};
 }
 
 export function cachingRelay(
@@ -23,22 +36,32 @@ export function cachingRelay(
 	return async (url, headers, githubApiUrl) => {
 		const hit = await cache.match(url);
 		if (hit !== undefined) {
-			return new Response(hit.body, { headers });
+			return answer(hit.body, headers, "hit");
 		}
 		const fetched = await upstream.fetchSuccess(url, githubApiUrl);
 		if ("failure" in fetched) {
 			return fetched.failure;
 		}
 		if (declaresMoreThan(fetched.answer, LARGEST_CACHED_BYTES)) {
-			return new Response(fetched.answer.body, { headers });
+			return answer(fetched.answer.body, headers, "bypass");
 		}
 		const { body, copy } = keepingACopy(
 			fetched.answer.body,
 			LARGEST_CACHED_BYTES,
 		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
-		return new Response(body, { headers });
+		return answer(body, headers, "miss");
 	};
+}
+
+function answer(
+	body: BodyInit | null,
+	headers: Record<string, string>,
+	outcome: CacheOutcome,
+): Response {
+	return new Response(body, {
+		headers: { ...headers, [CACHE_OUTCOME_HEADER]: outcome },
+	});
 }
 
 function declaresMoreThan(answer: Response, limit: number): boolean {
