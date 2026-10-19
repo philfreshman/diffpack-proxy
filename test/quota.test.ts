@@ -111,6 +111,56 @@ describe("the daily quota", () => {
 			resetsAt: "2026-10-21T00:00:00Z",
 		});
 	});
+
+	it("starts the upstream fetch without waiting for the counter", async () => {
+		const counterMayAnswer = Promise.withResolvers<void>();
+		const upstreamAsked = Promise.withResolvers<void>();
+		const realQuota = freshDailyQuota();
+		const proxy = proxyAt(NOON, {
+			dailyQuota: {
+				async take(now) {
+					await counterMayAnswer.promise;
+					return realQuota.take(now);
+				},
+			},
+			upstream: stubUpstream({
+				[P2_UPSTREAM]: () => {
+					upstreamAsked.resolve();
+					return new Response("{}");
+				},
+			}),
+		});
+
+		const pending = send(proxy, P2_PATH);
+		await upstreamAsked.promise;
+		counterMayAnswer.resolve();
+
+		expect((await pending).status).toBe(200);
+	});
+
+	it("cancels the upstream download of the request it refuses", async () => {
+		let downloadCancelled = false;
+		const upstream = stubUpstream({
+			[P2_UPSTREAM]: () =>
+				new Response(
+					new ReadableStream({
+						cancel() {
+							downloadCancelled = true;
+						},
+					}),
+				),
+		});
+		const proxy = proxyAt(NOON, { upstream });
+		for (let request = 0; request < TEST_DAILY_BUDGET; request++) {
+			await send(proxy, STATUS_PATH);
+		}
+
+		const response = await send(proxy, P2_PATH);
+
+		expect(response.status).toBe(503);
+		expect(upstream.calls).toHaveLength(1);
+		expect(downloadCancelled).toBe(true);
+	});
 });
 
 describe("a proxy that saw the day used up", () => {
