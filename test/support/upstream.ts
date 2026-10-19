@@ -45,16 +45,22 @@ interface ProxyRequestInit extends RequestInit {
 interface TestProxyOptions {
 	now?: () => number;
 	dailyQuota?: QuotaCounter | undefined;
+	githubToken?: string | undefined;
 }
 
 export function proxyFor(
 	upstream: ReturnType<typeof stubUpstream>,
-	{ now = Date.now, dailyQuota = freshDailyQuota() }: TestProxyOptions = {},
+	{
+		now = Date.now,
+		dailyQuota = freshDailyQuota(),
+		githubToken,
+	}: TestProxyOptions = {},
 ) {
 	const proxy = createProxy({
 		fetch: upstream.fetch,
 		dailyQuota,
 		now,
+		githubToken,
 	});
 	return (
 		path: string,
@@ -70,12 +76,13 @@ export function proxyFor(
 
 interface SingleRequestInit extends ProxyRequestInit {
 	dailyQuota?: QuotaCounter;
+	githubToken?: string;
 }
 
 export function proxyRequest(
 	upstream: ReturnType<typeof stubUpstream>,
 	path: string,
-	{ dailyQuota, ...init }: SingleRequestInit = {},
+	{ dailyQuota, githubToken, ...init }: SingleRequestInit = {},
 ): Promise<Response> {
-	return proxyFor(upstream, { dailyQuota })(path, init);
+	return proxyFor(upstream, { dailyQuota, githubToken })(path, init);
 }

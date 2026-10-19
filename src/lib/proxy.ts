@@ -23,6 +23,7 @@ interface ProxyDependencies {
 	dailyQuota: QuotaCounter;
 	upstreamTimeoutMs?: number;
 	now?: Clock;
+	githubToken?: string | undefined;
 }
 
 type QuotaRule = "counted" | "exempt" | "countsItself";
@@ -38,8 +39,9 @@ export function createProxy({
 	dailyQuota,
 	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
 	now = Date.now,
+	githubToken,
 }: ProxyDependencies) {
-	const upstream = createUpstream(fetch, upstreamTimeoutMs);
+	const upstream = createUpstream(fetch, upstreamTimeoutMs, githubToken);
 	const listing = createArchiveListing(upstream, now);
 	const quotaGuard = createQuotaGuard(dailyQuota);
 

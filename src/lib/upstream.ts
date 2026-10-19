@@ -21,15 +21,21 @@ const UPSTREAM_HOSTS = new Set([
 	"gitlab.com",
 ]);
 const USER_AGENT = "diffpack-proxy (+https://diffpack.io)";
+const GITHUB_THROTTLE_STATUSES = new Set([403, 429]);
 
-export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
+export function createUpstream(
+	fetch: UpstreamFetch,
+	timeoutMs: number,
+	githubToken?: string,
+) {
 	async function fetchOrUndefined(
 		url: string,
 		signal: AbortSignal,
+		credentials: HeadersInit = {},
 	): Promise<Response | undefined> {
 		try {
 			return await fetch(url, {
-				headers: { "User-Agent": USER_AGENT },
+				headers: { ...credentials, "User-Agent": USER_AGENT },
 				redirect: "manual",
 				signal,
 			});
@@ -41,9 +47,10 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 	async function fetchFollowingRedirects(
 		url: string,
 		signal: AbortSignal,
+		credentials: HeadersInit = {},
 		redirectsLeft = MAX_REDIRECTS,
 	): Promise<Response | undefined> {
-		const answer = await fetchOrUndefined(url, signal);
+		const answer = await fetchOrUndefined(url, signal, credentials);
 		if (answer === undefined || redirectsLeft === 0) {
 			return answer;
 		}
@@ -52,23 +59,41 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 			return answer;
 		}
 		await answer.body?.cancel();
-		return fetchFollowingRedirects(target, signal, redirectsLeft - 1);
+		return fetchFollowingRedirects(target, signal, {}, redirectsLeft - 1);
 	}
 
 	async function fetchHeadersInTime(
 		url: string,
+		credentials: HeadersInit = {},
 	): Promise<Response | undefined> {
 		const deadline = new AbortController();
 		const timer = setTimeout(() => deadline.abort(), timeoutMs);
 		try {
-			return await fetchFollowingRedirects(url, deadline.signal);
+			return await fetchFollowingRedirects(url, deadline.signal, credentials);
 		} finally {
 			clearTimeout(timer);
 		}
 	}
 
-	async function fetchSuccess(url: string): Promise<UpstreamSuccess> {
+	async function fetchFallingBackToGitHubApi(
+		url: string,
+		githubApiUrl: string | undefined,
+	): Promise<Response | undefined> {
 		const answer = await fetchHeadersInTime(url);
+		if (!githubToken || githubApiUrl === undefined || !isThrottled(answer)) {
+			return answer;
+		}
+		await answer.body?.cancel();
+		return fetchHeadersInTime(githubApiUrl, {
+			Authorization: `Bearer ${githubToken}`,
+		});
+	}
+
+	async function fetchSuccess(
+		url: string,
+		githubApiUrl?: string,
+	): Promise<UpstreamSuccess> {
+		const answer = await fetchFallingBackToGitHubApi(url, githubApiUrl);
 		if (answer === undefined) {
 			return { failure: upstreamFailed() };
 		}
@@ -80,8 +105,12 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 	}
 
 	return {
-		async relay(url: string, headers: HeadersInit): Promise<Response> {
-			const fetched = await fetchSuccess(url);
+		async relay(
+			url: string,
+			headers: HeadersInit,
+			githubApiUrl?: string,
+		): Promise<Response> {
+			const fetched = await fetchSuccess(url, githubApiUrl);
 			if ("failure" in fetched) {
 				return fetched.failure;
 			}
@@ -96,6 +125,10 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 			return readText(fetched.answer);
 		},
 	};
+}
+
+function isThrottled(answer: Response | undefined): answer is Response {
+	return answer !== undefined && GITHUB_THROTTLE_STATUSES.has(answer.status);
 }
 
 async function readText(answer: Response): Promise<UpstreamText> {
