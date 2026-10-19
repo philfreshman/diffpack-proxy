@@ -7,6 +7,10 @@ export type UpstreamFetch = (
 
 export type Upstream = ReturnType<typeof createUpstream>;
 
+type UpstreamFailure = { failure: Response };
+type UpstreamSuccess = { answer: Response } | UpstreamFailure;
+export type UpstreamText = { text: string } | UpstreamFailure;
+
 const NOT_FOUND = 404;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 3;
@@ -63,19 +67,43 @@ export function createUpstream(fetch: UpstreamFetch, timeoutMs: number) {
 		}
 	}
 
+	async function fetchSuccess(url: string): Promise<UpstreamSuccess> {
+		const answer = await fetchHeadersInTime(url);
+		if (answer === undefined) {
+			return { failure: upstreamFailed() };
+		}
+		if (!answer.ok) {
+			await answer.body?.cancel();
+			return { failure: failureFor(answer.status) };
+		}
+		return { answer };
+	}
+
 	return {
 		async relay(url: string, headers: HeadersInit): Promise<Response> {
-			const answer = await fetchHeadersInTime(url);
-			if (answer === undefined) {
-				return upstreamFailed();
+			const fetched = await fetchSuccess(url);
+			if ("failure" in fetched) {
+				return fetched.failure;
 			}
-			if (!answer.ok) {
-				await answer.body?.cancel();
-				return failureFor(answer.status);
+			return new Response(fetched.answer.body, { headers });
+		},
+
+		async text(url: string): Promise<UpstreamText> {
+			const fetched = await fetchSuccess(url);
+			if ("failure" in fetched) {
+				return fetched;
 			}
-			return new Response(answer.body, { headers });
+			return readText(fetched.answer);
 		},
 	};
+}
+
+async function readText(answer: Response): Promise<UpstreamText> {
+	try {
+		return { text: await answer.text() };
+	} catch {
+		return { failure: upstreamFailed() };
+	}
 }
 
 function allowedRedirectTarget(

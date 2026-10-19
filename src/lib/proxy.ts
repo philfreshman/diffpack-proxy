@@ -1,6 +1,8 @@
 import { ARCHIVE_PATH, relayArchive } from "./archive";
 import { isAllowedOrigin, withCorsHeadersFor } from "./cors";
 import { errorResponse } from "./errors";
+import { createArchiveListing } from "./listing";
+import type { Clock } from "./memo";
 import { p2PackageName, relayP2 } from "./p2";
 import { createUpstream, type UpstreamFetch } from "./upstream";
 
@@ -16,6 +18,7 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 25_000;
 interface ProxyDependencies {
 	fetch: UpstreamFetch;
 	upstreamTimeoutMs?: number;
+	now?: Clock;
 }
 
 interface Route {
@@ -26,8 +29,10 @@ interface Route {
 export function createProxy({
 	fetch,
 	upstreamTimeoutMs = DEFAULT_UPSTREAM_TIMEOUT_MS,
+	now = Date.now,
 }: ProxyDependencies) {
 	const upstream = createUpstream(fetch, upstreamTimeoutMs);
+	const listing = createArchiveListing(upstream, now);
 
 	function routeFor({ pathname, searchParams }: URL): Route {
 		if (pathname === HEALTH_PATH) {
@@ -43,7 +48,7 @@ export function createProxy({
 		if (pathname === ARCHIVE_PATH) {
 			return {
 				answersWithoutOrigin: false,
-				answer: () => relayArchive(upstream, searchParams),
+				answer: () => relayArchive(upstream, listing, searchParams),
 			};
 		}
 		return { answersWithoutOrigin: true, answer: async () => noSuchRoute() };

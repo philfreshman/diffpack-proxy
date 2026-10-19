@@ -35,6 +35,16 @@ matching `[A-Za-z0-9%._-]+`. Nothing else is accepted: no user info, no port, no
 parameters, `https` only. Redirects are followed by hand, at most 3, and only to `https` URLs
 without user info or a port on `repo.packagist.org` or a host in the right-hand column.
 
+The proxy serves only archives that Packagist lists for the named package. Before fetching the
+archive, it reads `https://repo.packagist.org/p2/{vendor}/{package}.json` and checks that the file
+contains `url` as a JSON string, written with plain or escaped (`\/`) slashes. If it does not,
+the answer is `403 archive_not_listed`. If that read fails, the archive is not fetched: a `404`
+from Packagist answers `404 not_found`, and any other failure answers `502 upstream_failed`.
+Each copy of the Worker remembers a p2 file it read for 5 minutes, so the two archives of one
+comparison cost one Packagist read. It keeps at most 8 MB of p2 text and drops the oldest file
+first. It also remembers each `package` and `url` pair it found listed for 10 minutes, so an
+archive Packagist stops listing can stay servable that long. Failed reads are not remembered.
+
 The GitHub rewrite skips `api.github.com`, which only answers with a redirect to `codeload` and
 counts against GitHub's 60-requests-per-hour limit for anonymous API calls.
 
@@ -59,10 +69,10 @@ upstream one.
 
 | Status | `error` | When | Extra fields |
 | :- | :- | :- | :- |
-| 400 | `invalid_request` | bad or missing package name, `url` missing, given more than once or not a URL | |
+| 400 | `invalid_request` | package name bad, missing or given more than once; `url` missing, given more than once or not a URL | |
 | 400 | `unsupported_archive_host` | `url` matches no row of the archive table | `host` |
 | 403 | `origin_not_allowed` | see above | |
-| 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata (PHP-04) | |
+| 403 | `archive_not_listed` | `url` is not in that package's Packagist metadata | |
 | 404 | `not_found` | Packagist or the archive host answered 404, or the path matches no route | |
 | 405 | `method_not_allowed` | not GET, HEAD or OPTIONS, on any path; the answer carries `Allow: GET, HEAD, OPTIONS` | |
 | 502 | `upstream_failed` | upstream answered 429, 5xx or another status that is not a success or 404, sent no headers within 25 seconds, could not be reached, or redirected somewhere not allowed or more than 3 times | `upstreamStatus` when there was one |

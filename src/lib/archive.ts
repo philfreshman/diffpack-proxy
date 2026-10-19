@@ -1,4 +1,5 @@
 import { errorResponse } from "./errors";
+import type { ArchiveListing } from "./listing";
 import { invalidPackageName, isComposerPackageName } from "./package-name";
 import type { Upstream } from "./upstream";
 
@@ -41,11 +42,33 @@ const ARCHIVE_HOSTS: ArchiveHost[] = [
 	},
 ];
 
+interface ArchiveRequest {
+	packageName: string;
+	distUrl: string;
+	source: string;
+}
+
 export async function relayArchive(
 	upstream: Upstream,
+	listing: ArchiveListing,
 	params: URLSearchParams,
 ): Promise<Response> {
-	if (!isComposerPackageName(params.get("package"))) {
+	const request = archiveRequestFrom(params);
+	if (request instanceof Response) {
+		return request;
+	}
+	const refusal = await listing.refusalFor(
+		request.packageName,
+		request.distUrl,
+	);
+	return refusal ?? upstream.relay(request.source, ARCHIVE_HEADERS);
+}
+
+function archiveRequestFrom(
+	params: URLSearchParams,
+): ArchiveRequest | Response {
+	const packageName = singleValue(params, "package");
+	if (!isComposerPackageName(packageName)) {
 		return invalidPackageName();
 	}
 	const distUrl = singleValue(params, "url");
@@ -60,7 +83,7 @@ export async function relayArchive(
 	if (source === undefined) {
 		return unsupportedArchiveHost(host);
 	}
-	return upstream.relay(source, ARCHIVE_HEADERS);
+	return { packageName, distUrl, source };
 }
 
 function singleValue(

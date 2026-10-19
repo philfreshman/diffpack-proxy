@@ -18,8 +18,9 @@ export async function relayP2(
 	if (!isComposerPackageName(name)) {
 		return invalidPackageName();
 	}
-	return upstream.relay(
-		`https://repo.packagist.org/p2/${name}.json`,
-		P2_HEADERS,
-	);
+	return upstream.relay(p2SourceUrl(name), P2_HEADERS);
+}
+
+export function p2SourceUrl(name: string): string {
+	return `https://repo.packagist.org/p2/${name}.json`;
 }
