@@ -18,18 +18,25 @@ function servingP2() {
 	return stubUpstream({ [P2_UPSTREAM]: () => new Response("{}") });
 }
 
+function settableClock(time: string) {
+	let now = new Date(time);
+	return {
+		read: () => now,
+		setTo(later: string) {
+			now = new Date(later);
+		},
+	};
+}
+
 function proxyAt(
-	time: string,
+	time: string | ReturnType<typeof settableClock>,
 	{
 		upstream = servingP2(),
 		dailyQuota = freshDailyQuota(),
 	}: QuotaProxyOptions = {},
 ) {
-	return createProxy({
-		fetch: upstream.fetch,
-		dailyQuota,
-		clock: () => new Date(time),
-	});
+	const clock = typeof time === "string" ? settableClock(time) : time;
+	return createProxy({ fetch: upstream.fetch, dailyQuota, clock: clock.read });
 }
 
 function send(
@@ -74,6 +81,24 @@ describe("the daily quota", () => {
 		expect(response.headers.get("Diffpack-Proxy-Error")).toBe(
 			"quota_exhausted",
 		);
+	});
+
+	it("opens again at 00:00 UTC and counts from zero", async () => {
+		const clock = settableClock("2026-10-19T23:59:59Z");
+		const proxy = proxyAt(clock);
+		await sendBeyondTheBudget(proxy, P2_PATH);
+
+		clock.setTo("2026-10-20T00:00:00Z");
+		const response = await send(proxy, P2_PATH);
+		const status = await send(proxy, STATUS_PATH);
+
+		expect(response.status).toBe(200);
+		expect(await status.json()).toEqual({
+			open: true,
+			used: 2,
+			budget: TEST_DAILY_BUDGET,
+			resetsAt: "2026-10-21T00:00:00Z",
+		});
 	});
 });
 
