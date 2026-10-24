@@ -26,7 +26,7 @@ scripts/smoke.sh <origin>   # live checks against a running proxy, network neede
 ```
 
 The pre-commit hook runs typecheck, lint, format and test. CI (`.github/workflows/ci.yml`) runs
-the same plus shellcheck on pull requests to `main`, from a frozen lockfile. Every push to `main`
+the same plus shellcheck on pull requests to `development` and `main`, from a frozen lockfile. Every push to `main`
 runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke test against
 the deployed address. Both share their setup steps through `.github/actions/setup`.
 
@@ -68,8 +68,9 @@ APIs.
 
 ## Git workflow
 
-- This repo works on `main` only: branch from the latest `main` and open pull requests against
-  `main`. There is no `development` branch.
+- Branch from the latest `development` and open pull requests against it. `main` is released by
+  merging `development` into it, and only `main` deploys, so a merge into `development` is not live
+  yet. Renovate opens its pull requests against `development` too.
 - Use short, meaningful branch names (`feat/…`, `fix/…`, `chore/…`).
 - Make small, independent commits with Conventional Commits: a short imperative header, a blank
   line, and a brief body explaining why. Write each body paragraph as one line.
