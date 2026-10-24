@@ -19,7 +19,7 @@ bun install                 # also turns on the Husky pre-commit hook
 bun run dev                 # wrangler dev on :8787
 bun run typecheck           # tsc, strict
 bun run lint                # biome lint
-bun run format              # biome format, check only (biome format --write . to fix)
+bun run format              # oxfmt, check only (bunx oxfmt to fix)
 bun run test                # Vitest inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
 scripts/smoke.sh <origin>   # live checks against a running proxy, network needed
