@@ -16,6 +16,12 @@ function servingP2(init: ResponseInit = {}) {
 	return stubUpstream({ [P2_UPSTREAM]: () => new Response("{}", init) });
 }
 
+function p2Request(): Request {
+	return new Request(`${PROXY}${P2_PATH}`, {
+		headers: { Origin: ALLOWED_ORIGIN },
+	});
+}
+
 describe("requests to upstream servers", () => {
 	it("send only diffpack's User-Agent, never the browser's headers", async () => {
 		const upstream = servingP2();
@@ -62,7 +68,7 @@ describe("requests to upstream servers", () => {
 
 		const response = await proxyRequest(upstream, P2_PATH);
 
-		expect([...response.headers.keys()].sort()).toEqual([
+		expect([...response.headers.keys()].toSorted()).toEqual([
 			"access-control-allow-origin",
 			"access-control-expose-headers",
 			"cache-control",
@@ -103,10 +109,11 @@ function redirectTo(location: string, status = 302) {
 	return () => new Response(null, { status, headers: { Location: location } });
 }
 
-describe("redirects from upstream servers", () => {
-	const hop = (n: number) =>
-		`https://repo.packagist.org/p2/monolog/monolog.json?hop=${n}`;
+function hop(n: number): string {
+	return `https://repo.packagist.org/p2/monolog/monolog.json?hop=${n}`;
+}
 
+describe("redirects from upstream servers", () => {
 	it.each([301, 302, 303, 307, 308])(
 		"are followed to an allowed host after a %i",
 		async (status) => {
@@ -226,12 +233,6 @@ describe("a slow upstream server", () => {
 			fetch: upstream.fetch,
 			dailyQuota: freshDailyQuota(),
 			upstreamTimeoutMs: TIMEOUT_MS,
-		});
-	}
-
-	function p2Request(): Request {
-		return new Request(`${PROXY}${P2_PATH}`, {
-			headers: { Origin: ALLOWED_ORIGIN },
 		});
 	}
 

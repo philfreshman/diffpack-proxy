@@ -79,9 +79,11 @@ describe("a GitHub archive that codeload throttles", () => {
 	])("answers as before when the token is %s", async (_, githubToken) => {
 		const upstream = githubServing(status(429), redirectTo(CODELOAD));
 
-		const response = await proxyRequest(upstream, ARCHIVE_PATH, {
-			...(githubToken === undefined ? {} : { githubToken }),
-		});
+		const response = await proxyRequest(
+			upstream,
+			ARCHIVE_PATH,
+			githubToken === undefined ? {} : { githubToken },
+		);
 
 		expect(response.status).toBe(502);
 		expect(await response.json()).toEqual({
