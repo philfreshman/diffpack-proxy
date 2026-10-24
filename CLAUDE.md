@@ -18,15 +18,15 @@ Bun installs packages and runs the scripts. Wrangler and the Vitest plugin need 
 bun install                 # also turns on the Husky pre-commit hook
 bun run dev                 # wrangler dev on :8787
 bun run typecheck           # tsc, strict
-bun run lint                # biome lint
-bun run format              # biome format, check only (biome format --write . to fix)
+bun run lint                # oxlint, warnings fail too (.oxlintrc.json)
+bun run format              # oxfmt, check only (bunx oxfmt to fix)
 bun run test                # Vitest inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
 scripts/smoke.sh <origin>   # live checks against a running proxy, network needed
 ```
 
 The pre-commit hook runs typecheck, lint, format and test. CI (`.github/workflows/ci.yml`) runs
-the same plus shellcheck on pull requests to `main`, from a frozen lockfile. Every push to `main`
+the same plus shellcheck on pull requests to `development` and `main`, from a frozen lockfile. Every push to `main`
 runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke test against
 the deployed address. Both share their setup steps through `.github/actions/setup`.
 
@@ -62,14 +62,16 @@ APIs.
   until it does not. The why behind a change goes in the commit message or the PR description.
 - Existing comments: keep them true when you change the code they describe, and delete them once
   the code makes them redundant.
-- The one exception is a reason a tool requires, such as the explanation after a `biome-ignore`.
+- The one exception is a reason a tool requires, such as the explanation after an
+  `oxlint-disable-next-line`.
 - Write tests first, at the public seam (the Worker's fetch handler), and only enough code to make
   each one pass.
 
 ## Git workflow
 
-- This repo works on `main` only: branch from the latest `main` and open pull requests against
-  `main`. There is no `development` branch.
+- Branch from the latest `development` and open pull requests against it. `main` is released by
+  merging `development` into it, and only `main` deploys, so a merge into `development` is not live
+  yet. Renovate opens its pull requests against `development` too.
 - Use short, meaningful branch names (`feat/…`, `fix/…`, `chore/…`).
 - Make small, independent commits with Conventional Commits: a short imperative header, a blank
   line, and a brief body explaining why. Write each body paragraph as one line.

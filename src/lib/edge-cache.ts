@@ -33,7 +33,7 @@ export function bypassingRelay(upstream: Upstream): Relay {
 		if ("failure" in fetched) {
 			return fetched.failure;
 		}
-		return answer(fetched.answer.body, headers, "bypass");
+		return answerWithOutcome(fetched.answer.body, headers, "bypass");
 	};
 }
 
@@ -45,7 +45,7 @@ export function cachingRelay(
 	return async (url, headers, githubApiUrl) => {
 		const hit = await ignoringCacheFailure(() => cache.match(url));
 		if (hit !== undefined) {
-			return answer(hit.body, headers, "hit");
+			return answerWithOutcome(hit.body, headers, "hit");
 		}
 		const fetched = await upstream.fetchSuccess(url, githubApiUrl);
 		if ("failure" in fetched) {
@@ -53,18 +53,18 @@ export function cachingRelay(
 		}
 		const source = fetched.answer.body;
 		if (source === null || !isCacheable(fetched.answer)) {
-			return answer(source, headers, "bypass");
+			return answerWithOutcome(source, headers, "bypass");
 		}
 		const { body, copy } = keepingACopy(
 			source,
 			new BoundedCopy(LARGEST_CACHED_BYTES, declaredLengthOf(fetched.answer)),
 		);
 		background.waitUntil(storeCopy(cache, url, copy, headers));
-		return answer(body, headers, "miss");
+		return answerWithOutcome(body, headers, "miss");
 	};
 }
 
-function answer(
+function answerWithOutcome(
 	body: BodyInit | null,
 	headers: Record<string, string>,
 	outcome: CacheOutcome,

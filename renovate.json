@@ -1,6 +1,7 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
 	"extends": ["config:recommended"],
+	"baseBranchPatterns": ["development"],
 	"schedule": ["before 5am on the 1st and 15th day of the month"],
 	"automerge": true,
 	"automergeType": "pr",
@@ -19,16 +20,11 @@
 			"description": "The Vitest plugin depends on an exact wrangler version, so the two move together",
 			"groupName": "cloudflare",
 			"matchPackageNames": ["wrangler", "@cloudflare/**"]
-		}
-	],
-	"customManagers": [
+		},
 		{
-			"customType": "jsonata",
-			"datasourceTemplate": "npm",
-			"depNameTemplate": "@biomejs/biome",
-			"fileFormat": "json",
-			"managerFilePatterns": ["**/biome.{json,jsonc}"],
-			"matchStrings": ["{\"currentValue\": $split($.\"$schema\",(\"/\"))[-2]}"]
+			"description": "oxlint and oxfmt are released together from the oxc project",
+			"groupName": "oxc",
+			"matchPackageNames": ["oxlint", "oxfmt"]
 		}
 	]
 }

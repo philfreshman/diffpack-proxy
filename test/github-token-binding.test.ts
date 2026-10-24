@@ -1,7 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 import { TEST_GITHUB_TOKEN } from "./support/github";
+import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 
 const SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
 const GITHUB_DIST = `https://api.github.com/repos/Seldaek/monolog/zipball/${SHA}`;

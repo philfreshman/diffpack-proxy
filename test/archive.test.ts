@@ -84,9 +84,11 @@ describe("HEAD /v1/composer/archive", () => {
 	});
 });
 
-describe("a hostile archive url", () => {
-	const github = (path: string) => `https://api.github.com/repos/${path}`;
+function github(path: string): string {
+	return `https://api.github.com/repos/${path}`;
+}
 
+describe("a hostile archive url", () => {
 	it.each([
 		[
 			"http instead of https",
