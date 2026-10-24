@@ -18,7 +18,7 @@ Bun installs packages and runs the scripts. Wrangler and the Vitest plugin need 
 bun install                 # also turns on the Husky pre-commit hook
 bun run dev                 # wrangler dev on :8787
 bun run typecheck           # tsc, strict
-bun run lint                # biome lint
+bun run lint                # oxlint, warnings fail too (.oxlintrc.json)
 bun run format              # oxfmt, check only (bunx oxfmt to fix)
 bun run test                # Vitest inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
@@ -62,7 +62,8 @@ APIs.
   until it does not. The why behind a change goes in the commit message or the PR description.
 - Existing comments: keep them true when you change the code they describe, and delete them once
   the code makes them redundant.
-- The one exception is a reason a tool requires, such as the explanation after a `biome-ignore`.
+- The one exception is a reason a tool requires, such as the explanation after an
+  `oxlint-disable-next-line`.
 - Write tests first, at the public seam (the Worker's fetch handler), and only enough code to make
   each one pass.
 

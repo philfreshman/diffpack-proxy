@@ -1,0 +1,30 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "unicorn", "oxc", "import", "promise", "vitest"],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "error",
+		"perf": "error"
+	},
+	"env": {
+		"builtin": true,
+		"es2024": true,
+		"worker": true
+	},
+	"ignorePatterns": [".claude/**"],
+	"rules": {
+		"no-unmodified-loop-condition": "off"
+	},
+	"overrides": [
+		{
+			"files": ["test/**"],
+			"rules": {
+				"no-await-in-loop": "off",
+				"vitest/expect-expect": [
+					"error",
+					{ "assertFunctionNames": ["expect", "expect*"] }
+				]
+			}
+		}
+	]
+}
