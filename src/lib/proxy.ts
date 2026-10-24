@@ -117,21 +117,6 @@ export function createProxy({
 		};
 	}
 
-	async function answer(
-		request: Request,
-		route: Route,
-		origin: string | null,
-	): Promise<Response> {
-		const refusal = refusalFor(request, route, origin);
-		if (refusal !== undefined) {
-			return refusal;
-		}
-		if (request.method === "OPTIONS") {
-			return preflight();
-		}
-		return route.answer();
-	}
-
 	async function answerWithinQuota(
 		request: Request,
 		origin: string | null,
@@ -163,6 +148,21 @@ export function createProxy({
 			return request.method === "HEAD" ? withoutBody(response) : response;
 		},
 	} satisfies ExportedHandler;
+}
+
+async function answer(
+	request: Request,
+	route: Route,
+	origin: string | null,
+): Promise<Response> {
+	const refusal = refusalFor(request, route, origin);
+	if (refusal !== undefined) {
+		return refusal;
+	}
+	if (request.method === "OPTIONS") {
+		return preflight();
+	}
+	return route.answer();
 }
 
 async function withoutBody(response: Response): Promise<Response> {
