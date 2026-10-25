@@ -1,5 +1,7 @@
 # diffpack-proxy
 
+[![Codebase health](.github/badges/fallow-health.svg)](AGENTS.md)
+
 A small Cloudflare Worker that lets [diffpack.io](https://diffpack.io) read PHP (Composer)
 packages and search Go modules in the browser.
 
@@ -79,6 +81,13 @@ bun run test
 
 `bun run test` runs the tests inside `workerd`, Cloudflare's Workers runtime, without network
 access.
+
+[fallow](https://fallow.tools) checks the code for unused files and exports, duplication,
+complexity and the import rules between the Worker's entry files and `src/lib/`. The pre-commit
+hook and CI run it, and you can too with `bunx fallow`. The badge at the top shows its health
+score; `bun run badge` regenerates it. [AGENTS.md](AGENTS.md) explains the setup, and
+[docs/security-candidates.md](docs/security-candidates.md) records what `bunx fallow security`
+found and why it is safe.
 
 ## Deploy and operate it
 

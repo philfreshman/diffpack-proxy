@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 This file guides Claude Code (claude.ai/code) when working in this repository.
+[AGENTS.md](AGENTS.md) covers how to ask fallow a question and what its configuration here means.
 
 diffpack-proxy is a Cloudflare Worker in TypeScript that fetches Packagist metadata, Composer
 archives and pkg.go.dev's Go module search for the diffpack app and adds CORS headers. It streams bytes only. The only thing it
@@ -22,13 +23,22 @@ bun run lint                # oxlint, warnings fail too (.oxlintrc.json)
 bun run format              # oxfmt, check only (bunx oxfmt to fix)
 bun run test                # Vitest inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
+bunx fallow                 # dead code, duplication, health and boundaries (.fallowrc.jsonc)
+bunx fallow security        # security candidates, triaged in docs/security-candidates.md
+bun run badge               # regenerate .github/badges/fallow-health.svg when the score moves
 scripts/smoke.sh <origin>   # live checks against a running proxy, network needed
 ```
 
-The pre-commit hook runs typecheck, lint, format and test. CI (`.github/workflows/ci.yml`) runs
-the same plus shellcheck on pull requests to `development` and `main`, from a frozen lockfile. Every push to `main`
-runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke test against
-the deployed address. Both share their setup steps through `.github/actions/setup`.
+The pre-commit hook runs typecheck, lint, format, test, then `fallow audit` against the branch's
+upstream. For agents, `.claude/hooks/fallow-gate.sh` runs the same audit before every `git commit`
+and `git push`, and `--no-verify` does not skip it. CI (`.github/workflows/ci.yml`) runs the hook's
+checks plus shellcheck and `bun run check:badge` on pull requests to `development` and `main`, from
+a frozen lockfile. Pull requests also get the `fallow audit (PR gate)` job, which fails on new
+findings and on a newly reachable security candidate. Pushes to `development` run CI too, for the
+`fallow (full repo)` job: the whole repo, a type-aware dead-code pass and the health grade. Every
+push to `main` runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke
+test against the deployed address. Both share their setup steps through `.github/actions/setup`.
+If a change moves the health score, run `bun run badge` and commit the SVG.
 
 ## Layout
 
@@ -36,7 +46,8 @@ the deployed address. Both share their setup steps through `.github/actions/setu
 - `src/daily-quota.ts`: the `DailyQuota` Durable Object, the one counter of today's requests.
   `src/lib/quota-guard.ts` asks it for a ticket on every counted request.
 - `src/lib/`: pure modules that take their side effects as parameters, for example
-  `createProxy(…)`, so tests can pass stubs.
+  `createProxy(…)`, so tests can pass stubs. They import nothing outside `src/lib/`, and fallow's
+  boundary rules fail the commit if one does.
 - `src/lib/upstream.ts`: the only module that calls `fetch`. It applies the contract's upstream
   rules (User-Agent, no forwarded headers, redirects by hand, timeout, error mapping) for every
   route.
