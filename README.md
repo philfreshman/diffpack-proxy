@@ -91,7 +91,8 @@ found and why it is safe.
 
 ## Deploy and operate it
 
-Every push to `main` deploys the Worker to Cloudflare and runs `scripts/smoke.sh` against it.
-[docs/operations.md](docs/operations.md) covers the first deploy, the smoke test, the free-plan
-limits, what people see when a limit is reached, usage, rollback, logging, the edge cache, the
-per-IP rate rule and where the daily counter runs.
+`main` only takes merges from `development`. Every push to `main` deploys the Worker to Cloudflare,
+runs `scripts/smoke.sh` against it, then tags a release worked out from the commit messages.
+[docs/operations.md](docs/operations.md) covers releases, the first deploy, the smoke test, the
+free-plan limits, what people see when a limit is reached, usage, rollback, logging, the edge
+cache, the per-IP rate rule and where the daily counter runs.

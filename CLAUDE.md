@@ -35,10 +35,14 @@ and `git push`, and `--no-verify` does not skip it. CI (`.github/workflows/ci.ym
 checks plus shellcheck and `bun run check:badge` on pull requests to `development` and `main`, from
 a frozen lockfile. Pull requests also get the `fallow audit (PR gate)` job, which fails on new
 findings and on a newly reachable security candidate. Pushes to `development` run CI too, for the
-`fallow (full repo)` job: the whole repo, a type-aware dead-code pass and the health grade. Every
-push to `main` runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, then the smoke
-test against the deployed address. Both share their setup steps through `.github/actions/setup`.
-If a change moves the health score, run `bun run badge` and commit the SVG.
+`fallow (full repo)` job: the whole repo, a type-aware dead-code pass and the health grade. Pull
+requests also get the `conventional commits` job, which fails on a commit message that is not a
+Conventional Commit, and pull requests to `main` get `main source is development`
+(`.github/workflows/main-source.yml`), which fails unless the pull request comes from `development`.
+Every push to `main` runs `.github/workflows/deploy.yml`: the CI checks, `wrangler deploy`, the smoke
+test against the deployed address, then semantic-release, which tags the release and writes its
+notes (see "Releases" in docs/operations.md). CI and deploy share their setup steps through
+`.github/actions/setup`. If a change moves the health score, run `bun run badge` and commit the SVG.
 
 ## Layout
 
@@ -80,12 +84,17 @@ APIs.
 
 ## Git workflow
 
-- Branch from the latest `development` and open pull requests against it. `main` is released by
-  merging `development` into it, and only `main` deploys, so a merge into `development` is not live
-  yet. Renovate opens its pull requests against `development` too.
+- Branch from the latest `development` and open pull requests against it. `main` only takes
+  pull requests from `development`, merged with a merge commit, and only `main` deploys, so a merge
+  into `development` is not live yet. Renovate opens its pull requests against `development` too.
+- A deployed merge into `main` with a `feat`, `fix`, `perf` or `revert` commit gets a version, a
+  `v*` tag and a GitHub release, worked out from the commit types since the last tag.
+  `package.json`'s version is not the release number.
 - Use short, meaningful branch names (`feat/…`, `fix/…`, `chore/…`).
 - Make small, independent commits with Conventional Commits: a short imperative header, a blank
-  line, and a brief body explaining why. Write each body paragraph as one line.
+  line, and a brief body explaining why. Write each body paragraph as one line. CI fails a pull
+  request with a commit that does not follow the format, since the release reads its version and
+  notes from them.
 - Add no AI attribution to commits or pull requests.
 - Never commit Cloudflare account IDs, tokens or other secrets. Local secrets go in `.dev.vars`,
   which git ignores.
