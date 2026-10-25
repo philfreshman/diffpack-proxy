@@ -42,6 +42,29 @@ jobs:
 
       - run: shellcheck scripts/*.sh
 
+  # Not on the deploy run: there `workflow_call` reports the caller's push to main.
+  commits:
+    name: conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check every commit is a Conventional Commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pattern='((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+|Revert ".+")'
+          bad=$(git log --no-merges --format='%h %s' "$BASE..$HEAD" | grep -vE "^[0-9a-f]+ $pattern$" || true)
+          if [ -n "$bad" ]; then
+            echo "::error::These commits are not Conventional Commits (type(scope): description). The release on main picks its version and notes from them, see \"Releases\" in docs/operations.md:"
+            echo "$bad"
+            exit 1
+          fi
+
   # Fails only on findings the PR introduces (`new-only`). Drift elsewhere is caught by fallow-full.
   fallow-audit:
     name: fallow audit (PR gate)
