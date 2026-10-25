@@ -9,11 +9,16 @@
 		"format": "oxfmt --check",
 		"test": "vitest run",
 		"deploy": "wrangler deploy",
+		"badge": "fallow health --format badge > .github/badges/fallow-health.svg",
+		"check:badge": "fallow health --format badge | diff -u .github/badges/fallow-health.svg -",
+		"fallow": "fallow",
+		"fallow:audit": "fallow audit",
 		"prepare": "husky"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-plugin": "1.4.4",
 		"@cloudflare/workers-types": "5.20261019.1",
+		"fallow": "3.35.0",
 		"husky": "9.1.7",
 		"oxfmt": "0.74.0",
 		"oxlint": "1.89.0",
