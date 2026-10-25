@@ -21,11 +21,45 @@ Renovate's automerges, and can be started by hand from the Actions tab (it deplo
 4. A wait of up to about two minutes for `/v1/health` on the address Wrangler reports, since a
    new `workers.dev` address can take a moment to answer.
 5. `scripts/smoke.sh` against that address. The address is also written to the run's summary.
+6. semantic-release, which tags the release and writes its notes (see "Releases" below). This step
+   runs only for a push to `main`, never for a run started by hand.
 
 Deploys never overlap: a second push waits until the running deploy has finished. If more pushes
 arrive while one waits, GitHub cancels the waiting run and keeps only the newest, which contains
 the others' changes. A run started by hand on another branch only runs the checks, and it never
 replaces a waiting deploy of `main`.
+
+## Releases
+
+`main` only takes pull requests from `development`, merged with a merge commit. The
+`main source is development` check (`.github/workflows/main-source.yml`) fails a pull request to
+`main` from any other branch or from a fork.
+
+After a deploy of `main` passes its smoke test, the `release` job in `deploy.yml` runs
+[semantic-release](https://semantic-release.gitbook.io/). It reads the commit messages since the
+last `v*` tag, picks the next version from them, pushes the tag and writes a GitHub release with
+the notes grouped by type:
+
+| Commits since the last release | Next version |
+| :- | :- |
+| a `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer | major (`v2.0.0`) |
+| at least one `feat` | minor (`v1.1.0`) |
+| at least one `fix`, `perf` or `revert` | patch (`v1.0.1`) |
+| only `chore`, `docs`, `style`, `refactor`, `test`, `build`, `ci` | no release |
+
+- **Why commit types matter.** A commit that is not a Conventional Commit is left out of the
+  version and the notes. The `conventional commits` check in `ci.yml` fails a pull request that
+  holds one.
+- **Only what deployed is released.** The release job needs the deploy job, so a failed deploy or
+  smoke test releases nothing. If several pushes queue up, the cancelled ones are not lost: the
+  next release covers every commit since the last tag.
+- **A deploy started by hand never releases.** To retry a failed release, re-run the failed job in
+  the original push run. When a release fails, semantic-release also opens an issue in the repo.
+- **Nothing is committed back to `main`.** `version` in `package.json` stays as it is and is not
+  the release number. The settings live in `.releaserc.json`.
+- **A rollback does not touch tags.** `wrangler rollback` (see "Rolling back") changes only what
+  runs on Cloudflare; the release for the bad change stays, and the revert on `main` gets its own
+  release.
 
 ## First deploy
 
