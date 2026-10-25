@@ -15,6 +15,10 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/ci.yml
+    # GitHub rejects the whole run if a called job asks for more than this, even the fallow jobs that skip here.
+    permissions:
+      contents: read
+      security-events: write
 
   deploy:
     name: deploy and smoke test

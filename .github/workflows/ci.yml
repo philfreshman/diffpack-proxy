@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [development, main]
+  push:
+    branches: [development]
   workflow_call:
 
 concurrency:
@@ -29,6 +31,9 @@ jobs:
 
       - run: bun run test
 
+      # The README badge is a committed SVG. When this fails, run `bun run badge` and commit it.
+      - run: bun run check:badge
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -36,3 +41,112 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - run: shellcheck scripts/*.sh
+
+  # Fails only on findings the PR introduces (`new-only`). Drift elsewhere is caught by fallow-full.
+  fallow-audit:
+    name: fallow audit (PR gate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # The audit diffs against the PR base, which a shallow clone does not have.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      # A run that analysed no source file would pass as if the tree were clean.
+      - uses: fallow-rs/fallow@v3.35.0
+        with:
+          command: audit
+          gate: new-only
+          fail-on-empty-analysis: true
+
+      # Security candidates never show up in the audit above. `newly-reachable` fails on a sink the PR makes reachable,
+      # not on an existing one whose ranking moved; the standing candidates are triaged in the docs.
+      - name: fallow security (newly reachable candidates)
+        run: >
+          bunx fallow security
+          --gate newly-reachable
+          --changed-since ${{ github.event.pull_request.base.sha }}
+
+      - uses: fallow-rs/fallow@v3.35.0
+        if: ${{ !cancelled() }}
+        with:
+          format: sarif
+
+      - uses: github/codeql-action/upload-sarif@v4.39.1
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: fallow-results.sarif
+
+  # The whole repo after each merge, since the PR gate never looks at files a PR does not touch.
+  # Not on the deploy run: there `workflow_call` reports the caller's push to main.
+  fallow-full:
+    name: fallow (full repo)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - uses: fallow-rs/fallow@v3.35.0
+        with:
+          fail-on-empty-analysis: true
+
+      # The TypeScript semantic pass runs here only, not in the pre-commit hook, to keep the hook fast.
+      # Its `_meta.type_aware` block goes to the summary even when the step fails.
+      - name: fallow dead-code (type-aware)
+        run: |
+          set +e
+          bunx fallow dead-code --type-aware --format json --quiet > type-aware.json
+          status=$?
+          set -e
+          {
+            echo '## fallow type-aware'
+            echo '```json'
+            jq '._meta.type_aware' type-aware.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Publish the health grade
+        if: ${{ !cancelled() }}
+        run: bunx fallow health --format github-summary >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: fallow-rs/fallow@v3.35.0
+        if: ${{ !cancelled() }}
+        with:
+          format: sarif
+
+      - uses: github/codeql-action/upload-sarif@v4.39.1
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: fallow-results.sarif
+
+      # An artifact, not a commit: a push with GITHUB_TOKEN triggers no checks, so it could never merge.
+      # Take them from the run and commit them through a normal PR when a baseline is needed.
+      - name: Save per-analysis baselines
+        run: |
+          bunx fallow dead-code --format json --quiet --save-baseline dead-code-baseline.json
+          bunx fallow health --format json --quiet --save-baseline health-baseline.json
+          bunx fallow dupes --format json --quiet --save-baseline dupes-baseline.json
+
+      - name: Upload per-analysis baselines
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: fallow-baselines
+          path: |
+            dead-code-baseline.json
+            health-baseline.json
+            dupes-baseline.json
+          retention-days: 30

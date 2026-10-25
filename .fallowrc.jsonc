@@ -1,0 +1,95 @@
+{
+	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+
+	// A file the parser rejects drops out of every analysis: its exports, its
+	// imports and its complexity all go unmeasured, and the only trace is a
+	// warning nobody reads. With this on, the run fails instead and the
+	// `parse-error` gate names the file, in the pre-commit hook, both CI fallow
+	// jobs and the agent gate alike.
+	"failOnParseError": true,
+
+	// `DailyQuota` is a Durable Object. The Worker never calls it directly: it
+	// calls a stub, `env.DAILY_QUOTA.getByName(…).take(now)` in `src/index.ts`,
+	// and the runtime forwards that over RPC to the instance. The stub's type
+	// comes from `DurableObjectNamespace<DailyQuota>` in `global-props.d.ts`,
+	// which the import graph cannot follow to the class, so `take` reads as
+	// never called. Scoped to `extends DurableObject` and named member by
+	// member, so a second RPC method has to be added here on purpose rather
+	// than slipping in under a wildcard.
+	"usedClassMembers": [{ "extends": "DurableObject", "members": ["take"] }],
+
+	"health": {
+		// CRAP is advisory here, never a gate, for the same reason as in the app
+		// (`philfreshman/diffpack`): the tests run in workerd through
+		// `@cloudflare/vitest-plugin`, nothing writes the Istanbul
+		// `coverage-final.json` fallow wants, so every CRAP number is
+		// `static_estimated` — derived from how many places reference an export,
+		// not from real coverage. Gating on that means a function starts failing
+		// because an unrelated file stopped importing it. The number stays in the
+		// report for ranking; this ceiling is set out of reach so it cannot block.
+		"maxCrap": 1000000,
+	},
+
+	"rules": {
+		// The warn-tier rules below all report zero findings against the current
+		// tree, so promoting them is free today and locks in the clean state.
+		// Promoting later, once findings have accumulated, is much harder. If any
+		// of these ever goes non-zero, that is a real regression, not a reason to
+		// demote it. The component and CSS rules the app promotes are left out:
+		// this repo has neither components nor stylesheets.
+		"unused-dev-dependencies": "error",
+		"unused-optional-dependencies": "error",
+		"dev-dependencies-in-production": "error",
+		"type-only-dependencies": "error",
+		"test-only-dependencies": "error",
+		"duplicate-exports": "error",
+
+		// Off, its default, stated here so the choice is visible. It protects
+		// package consumers from exported signatures that reference unexported
+		// types. The proxy is a deployed Worker — nothing imports it — so it is
+		// noise with no upside.
+		"private-type-leaks": "off",
+	},
+
+	// The repo already has this shape: `src/index.ts` and the Durable Object in
+	// `src/daily-quota.ts` are the only code that touches the Workers runtime
+	// (`env`, `caches.default`, the global `fetch`), and they hand all of it to
+	// `createProxy` as arguments. `src/lib/**` takes those as injected
+	// parameters and imports nothing outside itself, which is what lets every
+	// test in `test/` drive it with stubs. Writing it down costs nothing today
+	// and keeps it true. Verify with `bunx fallow list --boundaries`.
+	"boundaries": {
+		"zones": [
+			{ "name": "worker", "patterns": ["src/index.ts", "src/daily-quota.ts"] },
+			{ "name": "lib", "patterns": ["src/lib/**"] },
+		],
+		"rules": [
+			{ "from": "worker", "allow": ["lib"] },
+			{ "from": "lib", "allow": [] },
+		],
+		// Without this a new file under `src/` belongs to no zone, and unzoned
+		// files are unrestricted: the layering would go on passing while the new
+		// code sat outside it.
+		"coverage": {
+			"requireAllFiles": true,
+			"allowUnmatched": [
+				// Build and test tooling.
+				"*.config.ts",
+				"scripts/**",
+				"test/**",
+
+				// Ambient types for `env`: declarations only, no runtime code.
+				"src/global-props.d.ts",
+			],
+		},
+	},
+
+	// Deliberately no `"enabled": true`: the semantic pass is opted into per run
+	// with `--type-aware`, which is CI only (`.github/workflows/ci.yml`) and
+	// never the pre-commit hook. `best-effort`, not `complete`: an incomplete
+	// semantic answer stays advisory instead of failing the job.
+	"typeAware": {
+		"projects": ["tsconfig.json"],
+		"require": "best-effort",
+	},
+}
