@@ -20,7 +20,9 @@ bun install                 # also turns on the Husky pre-commit hook
 bun run dev                 # wrangler dev on :8787
 bun run typecheck           # tsc, strict
 bun run lint                # oxlint, warnings fail too (.oxlintrc.json)
-bun run format              # oxfmt, check only (bunx oxfmt to fix)
+bun run lint:fix            # oxlint, applies its safe fixes
+bun run format              # oxfmt, rewrites files (.oxfmtrc.json)
+bun run format:check        # oxfmt, check only
 bun run test                # Vitest inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
 bunx fallow                 # dead code, duplication, health and boundaries (.fallowrc.jsonc)
