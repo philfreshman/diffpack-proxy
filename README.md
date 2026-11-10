@@ -75,7 +75,7 @@ The Worker then answers on `http://localhost:8787`, for example
 `curl http://localhost:8787/v1/health` returns `{"ok":true}`.
 
 ```bash
-bun run typecheck && bun run lint && bun run format
+bun run typecheck && bun run lint && bun run format:check
 bun run test
 ```
 
