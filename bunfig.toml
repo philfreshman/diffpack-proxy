@@ -1,0 +1,4 @@
+[install]
+# Only resolve npm versions published at least 14 days ago (in seconds), including transitive ones.
+# Matches Renovate's minimumReleaseAge in renovate.json.
+minimumReleaseAge = 1209600
