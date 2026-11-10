@@ -10,7 +10,7 @@ runs:
 
     - uses: oven-sh/setup-bun@v2.2.0
       with:
-        bun-version: 1.4.1
+        bun-version: 1.4.4
 
     - name: Cache bun install
       uses: actions/cache@v6.1.0
