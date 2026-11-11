@@ -3,5 +3,10 @@
 	"useTabs": true,
 	"printWidth": 80,
 	"sortImports": { "newlinesBetween": false },
-	"ignorePatterns": ["**/*.md", ".claude/**"]
+	"ignorePatterns": [
+		"**/*.md",
+		".claude/**",
+		"renovate.json",
+		".github/workflows/renovate.yml"
+	]
 }
