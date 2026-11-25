@@ -82,7 +82,7 @@ jobs:
       - uses: ./.github/actions/setup
 
       # A run that analysed no source file would pass as if the tree were clean.
-      - uses: fallow-rs/fallow@a6956af63dd896d6106a7d28361585e0ff1c250b # v3.39.0
+      - uses: fallow-rs/fallow@ab762fb12b040889025f7d52902d86c3a26911c0 # v3.42.0
         with:
           command: audit
           gate: new-only
@@ -96,12 +96,12 @@ jobs:
           --gate newly-reachable
           --changed-since ${{ github.event.pull_request.base.sha }}
 
-      - uses: fallow-rs/fallow@a6956af63dd896d6106a7d28361585e0ff1c250b # v3.39.0
+      - uses: fallow-rs/fallow@ab762fb12b040889025f7d52902d86c3a26911c0 # v3.42.0
         if: ${{ !cancelled() }}
         with:
           format: sarif
 
-      - uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: ${{ !cancelled() }}
         with:
           sarif_file: fallow-results.sarif
@@ -122,7 +122,7 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - uses: fallow-rs/fallow@a6956af63dd896d6106a7d28361585e0ff1c250b # v3.39.0
+      - uses: fallow-rs/fallow@ab762fb12b040889025f7d52902d86c3a26911c0 # v3.42.0
         with:
           fail-on-empty-analysis: true
 
@@ -146,12 +146,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bunx fallow health --format github-summary >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: fallow-rs/fallow@a6956af63dd896d6106a7d28361585e0ff1c250b # v3.39.0
+      - uses: fallow-rs/fallow@ab762fb12b040889025f7d52902d86c3a26911c0 # v3.42.0
         if: ${{ !cancelled() }}
         with:
           format: sarif
 
-      - uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: ${{ !cancelled() }}
         with:
           sarif_file: fallow-results.sarif
