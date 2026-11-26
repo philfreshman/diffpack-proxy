@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
 const SEARCH_UPSTREAM = "https://pkg.go.dev/v1/search?q=chi&limit=25";

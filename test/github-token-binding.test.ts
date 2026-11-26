@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { TEST_GITHUB_TOKEN } from "./support/github";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 

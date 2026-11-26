@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { freshDailyQuota } from "./support/quota";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 

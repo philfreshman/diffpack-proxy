@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
 const P2_PATH = "/v1/composer/p2/monolog/monolog.json";

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createProxy } from "../src/lib/proxy";
 import type { QuotaCounter } from "../src/lib/quota";
 import { p2Listing } from "./support/packagist";

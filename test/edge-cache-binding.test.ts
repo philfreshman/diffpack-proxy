@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 
 const SHA = "1f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c";

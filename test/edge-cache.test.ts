@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 import { freshDailyQuota, TEST_DAILY_BUDGET } from "./support/quota";
 import { proxyFor, stubUpstream } from "./support/upstream";
