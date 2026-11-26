@@ -58,6 +58,10 @@ export default defineConfig({
 				},
 			},
 		],
+		options: {
+			typeAware: true,
+			typeCheck: true,
+		},
 		jsPlugins: [
 			{
 				name: "vite-plus",
