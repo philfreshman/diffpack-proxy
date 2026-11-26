@@ -12,7 +12,7 @@ const GITLAB_DIST =
 const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x10]);
 
 function archivePath(params: Record<string, string>): string {
-	return `/v1/composer/archive?${new URLSearchParams(params)}`;
+	return `/v1/composer/archive?${new URLSearchParams(params).toString()}`;
 }
 
 function servingListedZip(name: string, dist: string, source = dist) {
@@ -205,7 +205,7 @@ describe("a hostile archive url", () => {
 		["not a URL", archivePath({ package: "monolog/monolog", url: "zipball" })],
 		[
 			"given twice",
-			`${archivePath({ package: "monolog/monolog", url: GITHUB_DIST })}&${new URLSearchParams({ url: GITHUB_DIST })}`,
+			`${archivePath({ package: "monolog/monolog", url: GITHUB_DIST })}&${new URLSearchParams({ url: GITHUB_DIST }).toString()}`,
 		],
 	])("that is %s is refused as invalid_request", async (_, path) => {
 		const upstream = stubUpstream();
@@ -245,7 +245,7 @@ describe("a hostile archive package", () => {
 
 		const response = await proxyRequest(
 			upstream,
-			`${archivePath({ package: "monolog/monolog", url: GITHUB_DIST })}&${new URLSearchParams({ package: "psr/log" })}`,
+			`${archivePath({ package: "monolog/monolog", url: GITHUB_DIST })}&${new URLSearchParams({ package: "psr/log" }).toString()}`,
 		);
 
 		expect(response.status).toBe(400);

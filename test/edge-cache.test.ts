@@ -9,7 +9,7 @@ const CODELOAD = `https://codeload.github.com/Seldaek/monolog/legacy.zip/${SHA}`
 const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
 	package: "monolog/monolog",
 	url: GITHUB_DIST,
-})}`;
+}).toString()}`;
 const P2_PATH = "/v1/composer/p2/monolog/monolog.json";
 const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x10]);
 
@@ -214,7 +214,7 @@ describe("a cached archive", () => {
 			`/v1/composer/archive?${new URLSearchParams({
 				package: "acme/other",
 				url: GITHUB_DIST,
-			})}`,
+			}).toString()}`,
 		);
 
 		expect(response.status).toBe(403);
@@ -466,7 +466,7 @@ function cacheFailingOn(
 			return cache.delete(...args);
 		},
 	};
-	return failingCache as Cache;
+	return failingCache;
 }
 
 const CACHE_FAILURES: CacheFailure[] = ["throws", "rejects"];
@@ -535,7 +535,7 @@ describe("a failing edge cache on a custom domain", () => {
 			`/v1/composer/archive?${new URLSearchParams({
 				package: "acme/other",
 				url: GITHUB_DIST,
-			})}`,
+			}).toString()}`,
 		);
 
 		expect(response.status).toBe(403);

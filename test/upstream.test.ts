@@ -132,7 +132,7 @@ describe("redirects from upstream servers", () => {
 				`/v1/composer/archive?${new URLSearchParams({
 					package: "monolog/monolog",
 					url: dist,
-				})}`,
+				}).toString()}`,
 			);
 
 			expect(response.status).toBe(200);

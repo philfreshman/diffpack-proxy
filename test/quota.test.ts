@@ -15,7 +15,7 @@ const ARCHIVE_UPSTREAM = `https://codeload.github.com/Seldaek/monolog/legacy.zip
 const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
 	package: "monolog/monolog",
 	url: ARCHIVE_DIST,
-})}`;
+}).toString()}`;
 
 interface QuotaProxyOptions {
 	upstream?: ReturnType<typeof stubUpstream>;

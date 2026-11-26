@@ -92,7 +92,7 @@ describe("a missing origin", () => {
 			`/v1/composer/archive?${new URLSearchParams({
 				package: "monolog/monolog",
 				url: "https://api.github.com/repos/Seldaek/monolog/zipball/d7059e4c691d05ea1222b5124bed0f961be46e15",
-			})}`,
+			}).toString()}`,
 		],
 		["Go search", "/v1/go/search?q=chi"],
 	])("is refused on the %s route", async (_, path) => {

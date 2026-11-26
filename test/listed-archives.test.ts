@@ -11,7 +11,7 @@ const LISTED_CODELOAD = `https://codeload.github.com/Seldaek/monolog/legacy.zip/
 const UNLISTED_CODELOAD = `https://codeload.github.com/Seldaek/monolog/legacy.zip/${UNLISTED_SHA}`;
 
 function archivePath(name: string, url: string): string {
-	return `/v1/composer/archive?${new URLSearchParams({ package: name, url })}`;
+	return `/v1/composer/archive?${new URLSearchParams({ package: name, url }).toString()}`;
 }
 
 function servingMonolog(p2Text = p2Listing(MONOLOG, [LISTED_DIST])) {

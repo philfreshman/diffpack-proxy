@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { TEST_GITHUB_TOKEN } from "./support/github";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
+import { requestedUrl } from "./support/upstream";
 
 const SHA = "d7059e4c691d05ea1222b5124bed0f961be46e15";
 const GITHUB_DIST = `https://api.github.com/repos/Seldaek/monolog/zipball/${SHA}`;
@@ -15,7 +16,7 @@ function githubThrottlingAnonymousDownloads() {
 	return vi
 		.spyOn(globalThis, "fetch")
 		.mockImplementation(async (input, init) => {
-			const url = String(input);
+			const url = requestedUrl(input);
 			if (url === p2UpstreamUrl("monolog/monolog")) {
 				return new Response(p2Listing("monolog/monolog", [GITHUB_DIST]));
 			}
@@ -44,7 +45,7 @@ describe("the deployed Worker with the GITHUB_TOKEN secret", () => {
 			`https://proxy.test/v1/composer/archive?${new URLSearchParams({
 				package: "monolog/monolog",
 				url: GITHUB_DIST,
-			})}`,
+			}).toString()}`,
 			{ headers: { Origin: "https://diffpack.io" } },
 		);
 

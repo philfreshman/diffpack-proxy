@@ -16,6 +16,10 @@ type UpstreamAnswers = Record<
 	(init: RequestInit) => Response | Promise<Response>
 >;
 
+export function requestedUrl(input: Parameters<typeof fetch>[0]): string {
+	return input instanceof Request ? input.url : input.toString();
+}
+
 export function stubUpstream(answers: UpstreamAnswers = {}) {
 	const calls: UpstreamCall[] = [];
 	async function fetch(url: string, init: RequestInit): Promise<Response> {

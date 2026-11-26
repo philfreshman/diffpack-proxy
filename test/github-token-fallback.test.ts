@@ -9,7 +9,7 @@ const GITHUB_TOKEN = "github_pat_test-token";
 const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
 	package: "monolog/monolog",
 	url: GITHUB_DIST,
-})}`;
+}).toString()}`;
 
 type Answer = () => Response;
 
@@ -303,7 +303,7 @@ describe("the GitHub API fallback", () => {
 
 		await proxyRequest(
 			upstream,
-			`/v1/composer/archive?${new URLSearchParams({ package: name, url: BITBUCKET_DIST })}`,
+			`/v1/composer/archive?${new URLSearchParams({ package: name, url: BITBUCKET_DIST }).toString()}`,
 			{ githubToken: GITHUB_TOKEN },
 		);
 

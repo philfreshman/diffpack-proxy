@@ -53,7 +53,7 @@ describe("GET /v1/go/search", () => {
 
 		const response = await proxyRequest(
 			upstream,
-			`/v1/go/search?${new URLSearchParams({ q: smuggled })}`,
+			`/v1/go/search?${new URLSearchParams({ q: smuggled }).toString()}`,
 		);
 
 		expect(response.status).toBe(200);
