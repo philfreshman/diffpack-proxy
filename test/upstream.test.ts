@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createProxy } from "../src/lib/proxy";
 import { p2Listing } from "./support/packagist";
 import { freshDailyQuota } from "./support/quota";
@@ -132,7 +132,7 @@ describe("redirects from upstream servers", () => {
 				`/v1/composer/archive?${new URLSearchParams({
 					package: "monolog/monolog",
 					url: dist,
-				})}`,
+				}).toString()}`,
 			);
 
 			expect(response.status).toBe(200);

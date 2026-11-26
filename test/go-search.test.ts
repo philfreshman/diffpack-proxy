@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
 const SEARCH_UPSTREAM = "https://pkg.go.dev/v1/search?q=chi&limit=25";
@@ -53,7 +53,7 @@ describe("GET /v1/go/search", () => {
 
 		const response = await proxyRequest(
 			upstream,
-			`/v1/go/search?${new URLSearchParams({ q: smuggled })}`,
+			`/v1/go/search?${new URLSearchParams({ q: smuggled }).toString()}`,
 		);
 
 		expect(response.status).toBe(200);

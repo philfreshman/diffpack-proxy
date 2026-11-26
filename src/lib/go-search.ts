@@ -38,7 +38,7 @@ function goSearchSourceUrl(query: string): string {
 		q: query,
 		limit: String(RESULTS_PER_SEARCH),
 	});
-	return `https://pkg.go.dev/v1/search?${params}`;
+	return `https://pkg.go.dev/v1/search?${params.toString()}`;
 }
 
 function invalidQuery(): Response {

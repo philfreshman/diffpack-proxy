@@ -5,11 +5,11 @@
 	"scripts": {
 		"dev": "wrangler dev --port 8787",
 		"typecheck": "tsc --noEmit",
-		"lint": "oxlint --deny-warnings",
-		"lint:fix": "oxlint --fix",
-		"format": "oxfmt",
-		"format:check": "oxfmt --check",
-		"test": "vitest run",
+		"lint": "vp lint --deny-warnings",
+		"lint:fix": "vp lint --fix",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"test": "vp test run",
 		"deploy": "wrangler deploy",
 		"badge": "fallow health --format badge > .github/badges/fallow-health.svg",
 		"check:badge": "fallow health --format badge | diff -u .github/badges/fallow-health.svg -",
@@ -22,11 +22,15 @@
 		"@cloudflare/workers-types": "5.20261110.1",
 		"fallow": "3.42.0",
 		"husky": "9.1.7",
-		"oxfmt": "0.78.0",
-		"oxlint": "1.93.0",
 		"typescript": "7.0.2",
-		"vitest": "5.1.0",
+		"vite": "npm:@voidzero-dev/vite-plus-core@8.3.8001",
+		"vite-plus": "1.8.0",
+		"vitest": "5.1.1",
 		"wrangler": "4.160.1"
+	},
+	"overrides": {
+		"vite": "npm:@voidzero-dev/vite-plus-core@8.3.8001",
+		"vitest": "5.1.1"
 	},
 	"packageManager": "bun@1.4.4"
 }

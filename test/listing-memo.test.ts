@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 import { manualClock, proxyFor, stubUpstream } from "./support/upstream";
 
@@ -9,7 +9,7 @@ const NEW_DIST = `https://api.github.com/repos/Seldaek/monolog/zipball/${NEW_SHA
 const OLD_DIST = `https://api.github.com/repos/Seldaek/monolog/zipball/${OLD_SHA}`;
 
 function archivePath(name: string, url: string): string {
-	return `/v1/composer/archive?${new URLSearchParams({ package: name, url })}`;
+	return `/v1/composer/archive?${new URLSearchParams({ package: name, url }).toString()}`;
 }
 
 function servingMonolog() {

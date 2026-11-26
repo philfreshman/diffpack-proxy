@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createProxy } from "../src/lib/proxy";
 import type { QuotaCounter } from "../src/lib/quota";
 import { p2Listing } from "./support/packagist";
@@ -15,7 +15,7 @@ const ARCHIVE_UPSTREAM = `https://codeload.github.com/Seldaek/monolog/legacy.zip
 const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
 	package: "monolog/monolog",
 	url: ARCHIVE_DIST,
-})}`;
+}).toString()}`;
 
 interface QuotaProxyOptions {
 	upstream?: ReturnType<typeof stubUpstream>;

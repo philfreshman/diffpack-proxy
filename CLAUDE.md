@@ -13,17 +13,19 @@ error code is a breaking change for both. Change the contract first, then the co
 
 ## Commands
 
-Bun installs packages and runs the scripts. Wrangler and the Vitest plugin need Node 22 or newer.
+Bun installs packages and runs the scripts. Lint, format and test run through Vite+ (`vp`, from
+the `vite-plus` dev dependency), configured in the `lint`, `fmt` and `plugins` blocks of
+`vite.config.ts`. Vite+, Wrangler and the Vitest plugin need Node `^22.18.0`, `^24.11.0` or `>=26`.
 
 ```bash
 bun install                 # also turns on the Husky pre-commit hook
 bun run dev                 # wrangler dev on :8787
 bun run typecheck           # tsc, strict
-bun run lint                # oxlint, warnings fail too (.oxlintrc.json)
-bun run lint:fix            # oxlint, applies its safe fixes
-bun run format              # oxfmt, rewrites files (.oxfmtrc.json)
-bun run format:check        # oxfmt, check only
-bun run test                # Vitest inside workerd, offline
+bun run lint                # vp lint (Oxlint), warnings fail too
+bun run lint:fix            # vp lint, applies its safe fixes
+bun run format              # vp fmt (Oxfmt), rewrites files
+bun run format:check        # vp fmt, check only
+bun run test                # vp test (Vitest) inside workerd, offline
 bun run deploy              # wrangler deploy (CI deploys; see docs/operations.md)
 bunx fallow                 # dead code, duplication, health and boundaries (.fallowrc.jsonc)
 bunx fallow security        # security candidates, triaged in docs/security-candidates.md
@@ -63,7 +65,7 @@ notes (see "Releases" in docs/operations.md). CI and deploy share their setup st
   header). Reuse it for new error codes.
 - `test/`: Vitest tests through `@cloudflare/vitest-plugin`. They call the Worker through the
   runtime (`exports.default.fetch` from `cloudflare:workers`), the same seam a browser hits.
-  `vitest.config.ts` sets `DAILY_REQUEST_BUDGET` to 3, and `test/support/quota.ts` gives each
+  `vite.config.ts` sets `DAILY_REQUEST_BUDGET` to 3, and `test/support/quota.ts` gives each
   test proxy a fresh counter, so tests never share a count.
 - `wrangler.jsonc`: no `routes`, so the Worker deploys to `workers.dev`. Observability is off.
 

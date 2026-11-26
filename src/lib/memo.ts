@@ -3,7 +3,7 @@ export type Clock = () => number;
 interface MemoOptions<Value> {
 	lifetimeMs: number;
 	capacity: number;
-	sizeOf(key: string, value: Value): number;
+	sizeOf: (key: string, value: Value) => number;
 	now: Clock;
 }
 

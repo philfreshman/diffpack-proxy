@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { p2Listing, p2UpstreamUrl } from "./support/packagist";
 import { proxyRequest, stubUpstream } from "./support/upstream";
 
@@ -9,7 +9,7 @@ const GITHUB_TOKEN = "github_pat_test-token";
 const ARCHIVE_PATH = `/v1/composer/archive?${new URLSearchParams({
 	package: "monolog/monolog",
 	url: GITHUB_DIST,
-})}`;
+}).toString()}`;
 
 type Answer = () => Response;
 
@@ -303,7 +303,7 @@ describe("the GitHub API fallback", () => {
 
 		await proxyRequest(
 			upstream,
-			`/v1/composer/archive?${new URLSearchParams({ package: name, url: BITBUCKET_DIST })}`,
+			`/v1/composer/archive?${new URLSearchParams({ package: name, url: BITBUCKET_DIST }).toString()}`,
 			{ githubToken: GITHUB_TOKEN },
 		);
 

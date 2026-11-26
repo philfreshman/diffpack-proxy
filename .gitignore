@@ -121,3 +121,4 @@ type-aware.json
 # reproducing it locally.
 fallow-results.sarif
 fallow-results.json
+.vitest/
